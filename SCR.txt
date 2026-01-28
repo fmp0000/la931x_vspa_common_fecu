@@ -1,0 +1,43 @@
+NXP Software Content Register
+---------------------------------------------
+vspa_common_la9310 repository contains all the vspa kernel components for
+enabling LA9310 VSPA firmware development. It includes vspa-sdk providing
+basic support of la9310 SOC support, and vspa-lib which provides a set
+of basic optimized VSPA kernels.
+
+Release Name: vspa_common_la9310
+Release Version: 1.0
+Release Location: https://github.com/nxp-qoriq/vspa_common_la9310
+Package License: NXP (BSD-3-Clause)
+
+---------------------------------------------
+
+Package: vspa-sdk
+Description: basic support of la9310 SOC support
+Author: NXP
+License: BSD-3-Clause
+Format: source code
+Location: vspa-sdk 
+
+---------------------------------------------
+
+Package: vspa-lib
+Description: set of basic optimized VSPA kernels
+Author: NXP
+License: BSD-3-Clause
+Format: source code
+Location: vspa-lib
+
+---------------------------------------------
+
+Package: VSPA2 matlab mex
+Description: VSPA2 NXP matlab mex file
+Author: NXP
+License: EULA.txt
+Format: binary
+Outgoing License: LA_OPT_NXP_Software_License v63 May 2025 - Standard use - Section 2.2 applies
+License File: EULA.txt
+Origin: NXP (LA_OPT_NXP_Software_License)
+Location: vspa-lib\common\matlab\vspa
+
+---------------------------------------------

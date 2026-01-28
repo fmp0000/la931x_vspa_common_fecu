@@ -1,0 +1,145 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+   .section   .text
+
+// =============================================================================
+//! @file           fftDIT128_hfl.sx
+//! @brief          128 pt FFT and IFFT functions using DIT   
+//! @author         NXP Semiconductors
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Subroutine name: fftDIT128_hfl/ifftDIT128_hfl
+//
+// Subroutines called by this subroutine:
+//    NONE
+//
+//
+// ASM implementation description:
+//    Data for DIT butterflies is read into VRA. All stages are computed within the VRA 
+//      and final output is shipped off to memory.  
+//
+// Notes:
+//    NONE
+//
+// -----------------------------------------------------------------------------
+   .global  _fftDIT128_hfl
+   .type   _fftDIT128_hfl, @function
+_fftDIT128_hfl:
+#ifndef LIB_FFT_STUB
+	
+	jmp core_fftDIT128_hfl;
+   	set.creg 13, 1;
+   	set.nco radix2, 64, 33554432;
+
+#endif // LIB_FFT_STUB
+
+   	rts;
+   	nop;
+   	nop;
+
+   .size   _fftDIT128_hfl, .-_fftDIT128_hfl
+
+//===================================================================================
+   .global  _ifftDIT128_hfl
+   .type   _ifftDIT128_hfl, @function
+_ifftDIT128_hfl:
+#ifndef LIB_FFT_STUB
+
+	jmp core_fftDIT128_hfl;
+	set.creg 13, 1;
+   	//set.nco radix2, 64, -33554432;
+   	.quad ((0x0<<60) | (0x04<<54) | (0x2<<52) | (0x40<<36) | (0x1<<34) | (0x2000000<<2))
+#else
+	rts;
+	fnop;
+	fnop;
+
+#endif // LIB_FFT_STUB
+
+   .size   _ifftDIT128_hfl, .-_ifftDIT128_hfl
+
+
+// ***************************** CORE FUNCTION *****************************
+   .type   core_fftDIT128_hfl, @function
+core_fftDIT128_hfl:
+	clr.VRA;
+   	ld.laddr [a0]+1; 																	setB.VRAptr rS0, 16;			
+   	ld.laddr [a0]+1;																	set.VRAincr rS0, 32;
+   	ld.laddr [a0]+1;																	set.VRAincr rS2, 32;
+   						   	ld.h2l R0;													set.creg  15, 0xF;
+   	ld.laddr [a0]+1;		ld.l2h_h2l R0;												set.prec half, single, half, single, half_fixed;
+   	ld [a0]+0;				ld.l2h R1;  	rd S0; nco; rd S2;							set.Smode S0fft1, S2fft1;											
+   							ld.h2l R2;		rd S0; nco; rd S2;							set.VRArange1 rS2, 0, 224;								
+   							ld.l2h_h2l R2;	rd S0; nco; rd S2;	cmad.sau;				set.VRArange1 rS0, 16, 240;
+   							ld.l2h R3;		rd S0; nco; rd S2;	cmad.sau;
+   											rd S0; nco; rd S2;	cmad.sau;				set.VRAincr rV, 32;	
+   					   						rd S0; nco; rd S2;	cmad.sau;				mv nco_k, 32;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;	set.VRArange1 rV, 0, 224;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;	set.prec half_fixed, single, half_fixed, single, half_fixed;
+											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;	set.Smode S0fft2, S2fft2;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft1;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft1;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft1;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft1;	mv nco_k, 16;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;	set.Smode S0fft3, S2fft3;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;	mv nco_k, 8;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;	set.Smode S0fftn, S2fftn;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;	mv nco_k, 4;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft4;
+	setA.VRAptr rS0, 32;			 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft4;	set.VRAincr rS0, 16;
+	setA.VRAptr rS2, 0;											cmad.sau; 	wr.fft4;	set.VRAincr rS2, 16;
+											rd S0; nco; rd S2;	cmad.sau; 	wr.fft4;
+	setA.VRAptr rS0, 96;					rd S0; nco; rd S2;				wr.fft4;	setB.VRAptr rS2, 64;
+   											rd S0; nco; rd S2;	cmad.sau;	wr.fft4;
+   	setA.VRAptr rS0, 160;					rd S0; nco; rd S2;	cmad.sau;	wr.fft4;	setB.VRAptr rS2, 128;
+   											rd S0; nco; rd S2;	cmad.sau;	wr.fft4;
+	setA.VRAptr rS0, 224;					rd S0; nco; rd S2;	cmad.sau;				setB.VRAptr rS2, 192;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft5;	mv nco_k, 2;
+	setA.VRAptr rS0, 64;					rd S0; nco; rd S2;	cmad.sau;	wr.fft5;	setB.VRAptr rS2, 0;
+																cmad.sau;	wr.fft5;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft5;
+											rd S0; nco; rd S2;				wr.fft5;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft5;
+	setA.VRAptr rS0, 192;					rd S0; nco; rd S2;	cmad.sau;	wr.fft5;	setB.VRAptr rS2, 128;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft5;	set.creg  15, 0x8;
+	setA.VRAptr rV, 0;						rd S0; nco; rd S2;	cmad.sau;				set.VRAincr rV, 16;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	mv nco_k, 1;
+	setA.VRAptr rS0, 128;					rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+																cmad.sau;	wr.fftn;
+	setA.VRAptr rV, 128;										cmad.sau;	wr.fftn;
+																			wr.fftn;
+											rd S0; nco; rd S2;				wr.fftn;
+											rd S0; nco; rd S2;				wr.fftn;
+	setA.VRAptr rV, 0;						rd S0; nco; rd S2;	cmad.sau;	wr.fftn;
+											rd S0; nco; rd S2;	cmad.sau;
+											rd S0; nco; rd S2;	cmad.sau;
+											rd S0; nco; rd S2;	cmad.sau;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	set.VRAincr rSt, 1;
+																cmad.sau;	wr.fftn;
+	setA.VRAptr rV, 128;										cmad.sau;	wr.fftn;
+	st.laddr [a1]+2;														wr.fftn;
+	st.laddr [a1]-1;														wr.fftn;
+																			wr.fftn;	
+																			wr.fftn;	rts;	
+   	st.laddr [a1]+2;																	set.creg 13, 0;
+   	st [a1]+0;																			set.creg  15, 0xA;
+
+   .size   core_fftDIT128_hfl, .-core_fftDIT128_hfl
+// end
+//

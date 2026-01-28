@@ -1,0 +1,517 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           qamDemod2Ch.sx
+//! @brief          QAM demodulator for processing 2 channels
+//! @author         NXP Semiconductor, Inc.
+// =============================================================================
+#include "vspa.h"
+
+// -----------------------------------------------------------------------------
+// Subroutine name: qamDemod2Ch
+//
+// Subroutines called by this subroutine: none
+//
+// Registers usage:
+//    as registers modified: as5
+//    g registers modified:  g1, g1, g2
+//
+// -----------------------------------------------------------------------------
+#define OFFSET1 1024
+#define OFFSET2 1024
+
+
+#include "qam.h"
+
+    .global _qamDemod2Ch
+    .type   _qamDemod2Ch, @function
+
+_qamDemod2Ch:
+
+    cmp g1, 2;
+    set.prec half, half, single, single, half;
+    jmp.gt _gt2:
+    sub g4, g1, 2;   //g4 is the interation counter for the LLR calculation function
+    clr.VRA;
+    add g4, 1;
+
+
+_gt2: 
+    cmp g2, QAM_1024;
+    mv a3, _qamDemodScratch;
+    jmp.eq _qamDemod1024_2Ch:
+
+    cmp g2, QAM_256;
+    mv a2, _qamDemodScratch;
+    jmp.eq _qamDemod256_2Ch:
+
+    cmp g2, QAM_64;
+    fnop;
+    jmp.eq _qamDemod64_2Ch:
+
+    cmp g2, QAM_16;
+    fnop;
+    jmp.eq _qamDemod16_2Ch:
+    
+    cmp g2, QAM_QPSK;
+    fnop;
+    jmp.eq _qamDemodQpsk_2Ch:
+    
+    cmp g2, QAM_BPSK;
+    fnop;
+    jmp.eq _qamDemodBpsk_2Ch:
+    
+    fnop;
+    fnop;
+
+
+    .size   _qamDemod2Ch, .-_qamDemod2Ch
+
+
+_qamDemodBpsk_2Ch:
+
+//processing ch1    
+    sr g1, g1, 1;
+    ld.laddr [a0]+1;  mv a7, a0;
+    ld.laddr [a0]+1;  mv a8, a1;
+    set.VRArange1 rSt, 2, 3;                
+    ld.laddr [a0]+1;  ld.normal R0;  setB.VRAptr rV, 128;
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rd S1; rd S2; set.Smode S0straight, S1real1, S2zeros;
+    set.VRArange1 rV, 128, 224;      rd S0;         
+    ld.laddr [a0]+1;  ld.normal R0;         rmad; set.VRAincr rV, 32;       
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rmad; setB.VRAptr rSt, 2;        
+    set.loop g1, 3;                  rd S0;              
+    ld.laddr [a0]+1;  ld.normal R0;         rmad; set.VRAincr rSt, 1;       
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rmad;  wr.even;
+    mv a2, _qamDemodScratch;         rd S0;        wr.even; 
+    ld.laddr [a0]+1;  ld.normal R0;         rmad;           loop_begin;
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rmad;  wr.even;
+    st.laddr [a2]+1;                 rd S0;        wr.even; loop_end; 
+    
+    jsr _qamLlrPack:
+    mv a0, _qamDemodScratch;
+    set.prec single, half, half, single, half_fixed;
+
+//processing ch2    
+    add a0, a7, (OFFSET1)*UPHW;
+    add a1, a8, (OFFSET2)*UPHW;
+    ld.laddr [a0]+1; clr.VRA;
+    ld.laddr [a0]+1; set.prec half, half, single, single, half;
+    set.VRArange1 rSt, 2, 3;                
+    ld.laddr [a0]+1;  ld.normal R0;  setB.VRAptr rV, 128;
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rd S1; rd S2; set.Smode S0straight, S1real1, S2zeros;
+    set.VRArange1 rV, 128, 224;      rd S0;         
+    ld.laddr [a0]+1;  ld.normal R0;         rmad; set.VRAincr rV, 32;       
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rmad; setB.VRAptr rSt, 2;        
+    set.loop g1, 3;                  rd S0;              
+    ld.laddr [a0]+1;  ld.normal R0;         rmad; set.VRAincr rSt, 1;       
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rmad;  wr.even;
+    mv a2, _qamDemodScratch;         rd S0;        wr.even; 
+    ld.laddr [a0]+1;  ld.normal R0;         rmad;           loop_begin;
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rmad;  wr.even;
+    st.laddr [a2]+1;                 rd S0;        wr.even; loop_end; 
+    
+    jmp _qamLlrPack:
+    mv a0, _qamDemodScratch;
+    set.prec single, half, half, single, half_fixed;
+
+
+
+_qamDemodQpsk_2Ch:
+//processing ch1      
+    mv a7, a0;
+    jsr _qamLlrPack:
+    mv a8, a1;
+    set.prec single, half, half, single, half_fixed;
+//processing ch2      
+    jmp _qamLlrPack:
+    add a0, a7, (OFFSET1)*UPHW;
+    add a1, a8, (OFFSET2)*UPHW;
+    
+
+
+_qamDemod16_2Ch:
+//processing ch1    
+    mv a7, a0;
+    mv g3, QAM_NORMALIZATION_16;
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    floatx2n g3, g3, 1;
+    fill.w [rV], g3;
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+2;  mv a8, a1;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+2;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-3;                rd S0;        wr.straight;
+    st.laddr [a2]+5;                                            loop_end;
+    add a2, (-192)*UPHW;                   rmad;
+    sl g1, g1,1;                                  wr.straight;
+    st.laddr [a2]+2;
+    set.prec single, half, half, single, half_fixed; 
+    jsr _qamLlrPack:
+    mv a0, _qamDemodScratch;                      wr.straight;                
+    st.laddr [a2]+0;
+
+//processing ch2
+    clr.VRA;
+    mv a2, _qamDemodScratch;
+    add a0, a7, (OFFSET1)*UPHW;
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    set.prec half, half, single, single , half; 
+    fill.w [rV], g3; 
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+2;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+2;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-3;                rd S0;        wr.straight;
+    st.laddr [a2]+5;                                            loop_end;
+    add a2, (-192)*UPHW;                   rmad;
+    add a1, a8, (OFFSET2)*UPHW;                   wr.straight;
+    st.laddr [a2]+2;
+    set.prec single, half, half, single, half_fixed; 
+    jmp _qamLlrPack:
+    mv a0, _qamDemodScratch;                      wr.straight;                
+    st.laddr [a2]+0;
+                                                  
+    rts;  
+    fnop; 
+    fnop;
+
+
+_qamDemod64_2Ch:
+//processing ch1
+    mv a7, a0;
+    mv g3, QAM_NORMALIZATION_64;
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    floatx2n g3, g3, 2;  //g3=4*Normalization
+    fill.w [rV], g3;
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+3;  mv a8, a1;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+3;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-5;                rd S0;        wr.straight;
+    st.laddr [a2]+8;                                            loop_end;
+    add a2, (-320)*UPHW;                   rmad;
+    add a3, (64)*UPHW;                            wr.straight;
+    floatx2n g3, g3, -1;
+    ld.laddr [a3]+3;
+    st.laddr [a2]+3;                              wr.straight;
+    st.laddr [a2]+0;
+    ld.laddr [a3]+3;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a3]+3;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a4, _qamDemodScratch;  
+    ld.laddr [a3]+3;                rd S0; rmad; 
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a3]+3;                rd S0; rmad;
+    add a4, (128)*UPHW;ld.normal R0;
+    ld.laddr [a3]+3;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a4]+3;  ld.normal R0;                             loop_end;                                          
+    set.prec single, half, half, single, half_fixed; wr.straight;      
+    st.laddr [a4]+3;
+    mv a0, _qamDemodScratch;                       wr.straight;                                                                             
+    jsr _qamLlrPack:
+    st.laddr [a4]+3;
+    mpyD g1, g1, 3;
+
+//processing ch2  
+    clr.VRA;
+    add a0, a7, (OFFSET1)*UPHW;
+    set.prec half, half, single, single , half; 
+    mv a2, _qamDemodScratch;  
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    floatx2n g3, g3, 1;
+    fill.w [rV], g3;
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+3;  mv a3, a2;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+3;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-5;                rd S0;        wr.straight;
+    st.laddr [a2]+8;                                            loop_end;
+    add a2, (-320)*UPHW;                   rmad;
+    add a3, (64)*UPHW;                            wr.straight;
+    floatx2n g3, g3, -1;
+    ld.laddr [a3]+3;
+    st.laddr [a2]+3;                              wr.straight;
+    st.laddr [a2]+0;
+    ld.laddr [a3]+3;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a3]+3;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a4, _qamDemodScratch;  
+    ld.laddr [a3]+3;                rd S0; rmad; 
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a3]+3;                rd S0; rmad;
+    add a4, (128)*UPHW;ld.normal R0;
+    ld.laddr [a3]+3;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a4]+3;  ld.normal R0;                             loop_end;                                          
+    set.prec single, half, half, single, half_fixed; wr.straight;      
+    st.laddr [a4]+3;
+    mv a0, _qamDemodScratch;                       wr.straight;                                                                             
+    jmp _qamLlrPack:
+    st.laddr [a4]+3;
+    add a1, a8, (OFFSET2)*UPHW;                                     
+
+
+_qamDemod256_2Ch:
+    
+//processing ch1  
+    mv a7, a0;
+    mv g3, QAM_NORMALIZATION_256;
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    floatx2n g3, g3, 3;  //g3=8*Normalization
+    fill.w [rV], g3;
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+4;  mv a8, a1;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+4;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-7;                rd S0;        wr.straight;
+    st.laddr [a2]+11;                                           loop_end;
+    add a2, (-448)*UPHW;                   rmad;
+    add a3, (64)*UPHW;                            wr.straight;
+    floatx2n g3, g3, -1;
+    ld.laddr [a3]+4;
+    st.laddr [a2]+4;                              wr.straight;
+    st.laddr [a2]+0;
+    ld.laddr [a3]+4;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a3]+4;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a4, _qamDemodScratch;  
+    ld.laddr [a3]+4;                rd S0; rmad;  mv a5, a4;
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a3]+4;                rd S0; rmad;
+    add a4, (128)*UPHW;ld.normal R0;
+    ld.laddr [a3]+4;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a4]+4;  ld.normal R0;                             loop_end;                                          
+    add a5, (128)*UPHW;                           wr.straight;      
+    floatx2n g3, g3, -1;
+    st.laddr [a4]+4;                              wr.straight;                                     
+    ld.laddr [a5]+4;
+    st.laddr [a4]+0;
+    ld.laddr [a5]+4;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;
+    ld.laddr [a5]+4;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a6, _qamDemodScratch;
+    ld.laddr [a5]+4;                rd S0; rmad;               
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a5]+4;                rd S0; rmad;               
+    add a6, (192)*UPHW;ld.normal R0;
+    ld.laddr [a5]+4;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a6]+4;  ld.normal R0;                             loop_end;      
+    set.prec single, half, half, single, half_fixed; wr.straight;      
+    st.laddr [a6]+4;
+    mv a0, _qamDemodScratch;                       wr.straight;        
+    jsr _qamLlrPack:
+    st.laddr [a6]+0;
+    sl g1, g1, 2;
+
+//processing ch2  
+    clr.VRA;
+    add a0, a7, (OFFSET1)*UPHW;
+    set.prec half, half, single, single , half; 
+    mv a2, _qamDemodScratch;  
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    floatx2n g3, g3, 2;  //g3=8*Normalization
+    fill.w [rV], g3;
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+4;  mv a3, a2;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+4;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-7;                rd S0;        wr.straight;
+    st.laddr [a2]+11;                                           loop_end;
+    add a2, (-448)*UPHW;                   rmad;
+    add a3, (64)*UPHW;                            wr.straight;
+    floatx2n g3, g3, -1;
+    ld.laddr [a3]+4;  
+    st.laddr [a2]+4;                              wr.straight;
+    st.laddr [a2]+0;
+    ld.laddr [a3]+4;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a3]+4;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a4, _qamDemodScratch;  
+    ld.laddr [a3]+4;                rd S0; rmad;  mv a5, a4;
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a3]+4;                rd S0; rmad;
+    add a4, (128)*UPHW;ld.normal R0;
+    ld.laddr [a3]+4;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a4]+4;  ld.normal R0;                             loop_end;                                          
+    add a5, (128)*UPHW;                           wr.straight;      
+    floatx2n g3, g3, -1;
+    st.laddr [a4]+4;                              wr.straight;                                     
+    ld.laddr [a5]+4;
+    st.laddr [a4]+0;
+    ld.laddr [a5]+4;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;
+    ld.laddr [a5]+4;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a6, _qamDemodScratch;
+    ld.laddr [a5]+4;                rd S0; rmad;               
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a5]+4;                rd S0; rmad;               
+    add a6, (192)*UPHW;ld.normal R0;
+    ld.laddr [a5]+4;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a6]+4;  ld.normal R0;                             loop_end;      
+    set.prec single, half, half, single, half_fixed; wr.straight;      
+    st.laddr [a6]+4;
+    mv a0, _qamDemodScratch;                       wr.straight;        
+    jmp _qamLlrPack:
+    st.laddr [a6]+0;
+    add a1, a8, (OFFSET2)*UPHW;
+
+    
+    
+    
+_qamDemod1024_2Ch:  
+//processing ch1  
+    mv g3, QAM_NORMALIZATION_1024;
+    mv a9, a0;
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    floatx2n g3, g3, 4;  //g3=16*Normalization
+    fill.w [rV], g3;
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+5;  mv a10, a1;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+5;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-9;                rd S0;        wr.straight;
+    st.laddr [a2]+14;                                           loop_end;
+    add a2, (-576)*UPHW;                   rmad;
+    add a3, (64)*UPHW;                            wr.straight;
+    floatx2n g3, g3, -1;
+    ld.laddr [a3]+5;  
+    st.laddr [a2]+5;                              wr.straight;
+    st.laddr [a2]+0;
+    ld.laddr [a3]+5;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a3]+5;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a4, _qamDemodScratch;  
+    ld.laddr [a3]+5;                rd S0; rmad;  mv a2, a4;
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a3]+5;                rd S0; rmad;
+    add a4, (128)*UPHW;ld.normal R0;
+    ld.laddr [a3]+5;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a4]+5;  ld.normal R0;                             loop_end;                                          
+    add a2, (128)*UPHW;                           wr.straight;      
+    floatx2n g3, g3, -1;
+    st.laddr [a4]+5;                              wr.straight;                                     
+    ld.laddr [a2]+5;
+    st.laddr [a4]+0;
+    ld.laddr [a2]+5;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a2]+5;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a6, _qamDemodScratch;  
+    ld.laddr [a2]+5;                rd S0; rmad;  mv a7, a6;
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a2]+5;                rd S0; rmad;
+    add a6, (192)*UPHW;ld.normal R0;
+    ld.laddr [a2]+5;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a6]+5;  ld.normal R0;                             loop_end;                                          
+    add a7, (192)*UPHW;                           wr.straight;      
+    floatx2n g3, g3, -1;
+    st.laddr [a6]+5;                              wr.straight;                                     
+    ld.laddr [a7]+5;
+    st.laddr [a6]+0;
+    ld.laddr [a7]+5;  setB.VRAptr rV, 128;    
+    fill.w [rV], g3;  ld.normal R0;
+    ld.laddr [a7]+5;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a8, _qamDemodScratch;
+    ld.laddr [a7]+5;                rd S0; rmad;               
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a7]+5;                rd S0; rmad;               
+    add a8, (256)*UPHW;ld.normal R0;
+    ld.laddr [a7]+5;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a8]+5;  ld.normal R0;                             loop_end;      
+    set.prec single, half, half, single, half_fixed; wr.straight;      
+    st.laddr [a8]+5;
+    mv a0, _qamDemodScratch;                       wr.straight;        
+    jsr _qamLlrPack:
+    st.laddr [a8]+0;
+    mpyD g1, g1, 5;   
+    
+//processing ch2
+    clr.VRA;
+    add a0, a9, (OFFSET1)*UPHW;
+    set.prec half, half, single, single , half; 
+    mv a2, _qamDemodScratch;    
+    ld.laddr [a0]+1;  setB.VRAptr rV, 128;
+    floatx2n g3, g3, 3;  //g3=16*Normalization
+    fill.w [rV], g3;
+    ld.laddr [a0]+1;  ld.normal R0; setB.VRAptr rS2, 128; 
+                                    rd S0; rd S1; rd S2; set.Smode S0chs, S0abs, S1real1, S2i1r1i1r1;
+    st.laddr [a2]+5;  mv a3, a2;
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;
+    set.loop g4, 3;                 rd S0;
+    st.laddr [a2]+5;  setB.VRAptr rV, 0;  
+    ld.laddr [a0]+1;  ld.normal R0;        rmad;                loop_begin;
+    st.laddr [a2]-9;                rd S0;        wr.straight;
+    st.laddr [a2]+14;                                           loop_end;
+    add a2, (-576)*UPHW;                   rmad;
+    add a3, (64)*UPHW;                            wr.straight;
+    floatx2n g3, g3, -1;
+    ld.laddr [a3]+5;  
+    st.laddr [a2]+5;                              wr.straight;
+    st.laddr [a2]+0;
+    ld.laddr [a3]+5;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a3]+5;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a4, _qamDemodScratch;  
+    ld.laddr [a3]+5;                rd S0; rmad;  mv a2, a4;
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a3]+5;                rd S0; rmad;
+    add a4, (128)*UPHW;ld.normal R0;
+    ld.laddr [a3]+5;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a4]+5;  ld.normal R0;                             loop_end;                                          
+    add a2, (128)*UPHW;                           wr.straight;      
+    floatx2n g3, g3, -1;
+    st.laddr [a4]+5;                              wr.straight;                                     
+    ld.laddr [a2]+5;
+    st.laddr [a4]+0;
+    ld.laddr [a2]+5;  setB.VRAptr rV, 128;
+    fill.w [rV], g3;  ld.normal R0;             
+    ld.laddr [a2]+5;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a6, _qamDemodScratch;  
+    ld.laddr [a2]+5;                rd S0; rmad;  mv a7, a6;
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a2]+5;                rd S0; rmad;
+    add a6, (192)*UPHW;ld.normal R0;
+    ld.laddr [a2]+5;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a6]+5;  ld.normal R0;                             loop_end;                                          
+    add a7, (192)*UPHW;                           wr.straight;      
+    floatx2n g3, g3, -1;
+    st.laddr [a6]+5;                              wr.straight;                                     
+    ld.laddr [a7]+5;
+    st.laddr [a6]+0;
+    ld.laddr [a7]+5;  setB.VRAptr rV, 128;    
+    fill.w [rV], g3;  ld.normal R0;
+    ld.laddr [a7]+5;                rd S0; rd S1; rd S2;  setB.VRAptr rV, 0;
+                      ld.normal R0; mv a8, _qamDemodScratch;
+    ld.laddr [a7]+5;                rd S0; rmad;               
+    set.loop g4, 2;   ld.normal R0;
+    ld.laddr [a7]+5;                rd S0; rmad;               
+    add a8, (256)*UPHW;ld.normal R0;
+    ld.laddr [a7]+5;                rd S0; rmad;  wr.straight;  loop_begin;
+    st.laddr [a8]+5;  ld.normal R0;                             loop_end;      
+    set.prec single, half, half, single, half_fixed; wr.straight;      
+    st.laddr [a8]+5;
+    mv a0, _qamDemodScratch;                       wr.straight;        
+    jmp _qamLlrPack:
+    st.laddr [a8]+0;
+    add a1, a10, (OFFSET2)*UPHW;

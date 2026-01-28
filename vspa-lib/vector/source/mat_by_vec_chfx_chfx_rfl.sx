@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2018 - 2025   NXP Semiconductors All rights reserved
+
+// =============================================================================
+//! @file           mat_by_vec_chfx_chfx_rfl.sx
+//! @brief          VCPU procedure to extract pilot SC (DMRS) for 5G NR PBCH.
+//! @author         NXP Semiconductors.
+// =============================================================================
+#include "vspa3.h"
+   .section .text
+
+#define _VR     (__AU_COUNT__*4)
+#define _VRH    (__AU_COUNT__*2)
+
+   .global  _mat_by_vec_chfx_chfx_rfl
+   .type    _mat_by_vec_chfx_chfx_rfl, @function
+_mat_by_vec_chfx_chfx_rfl:
+
+    // register usage:
+    //
+    // VRA layout:
+    // R2: a
+    // R1: x1
+    // R0: y = a*x
+    //
+    // rS0: {2}
+    // rS1: {1}
+    // rV:  {0}
+    // rSt: {0}
+    //
+    // DMEM pointers:
+    // a0: pointer to y  (output)
+    // a1: pointer to x1 (input) 
+    // a2: pointer to a  (input)
+    // g0: offset (number of words) between x_i and x_(i+1)
+    // g1: number of DMEM lines L
+    // g2: size of a in half words (M) 
+    clr.VRA; 
+    sl g3,g0,1*UPHW;             
+    setA.VRAptr rS0, 2*_VR;   mvB a3,a2;          
+    setA.VRAptr rS1, _VR;     mvB g4, a1;
+    ld [g4]+g3;               setB.loop g1, L1S, L1E;      
+    ld [a2]+(2*UPHW);         set.prec single, half_fixed, half_fixed,single,half_fixed;                                        
+    ld [g4]+g3;               set.Smode S0hword, S1straight, S2zeros;            
+L1S:ld [a2]+(2*UPHW);         ld.normal R1;                                         loop_begin; 
+    ld [g4]+g3;               ld.replace_l R2;       setB.loop g2, L2S, L2E;                                   
+    ld [a2]+(2*UPHW);         ld.normal R1;          rd S0;  rd S1;  rd S2; 
+    ld [g4]+g3;               ld.replace_l R2;                                                 
+    ld [a2]+(2*UPHW);         ld.normal R1;          rd S0;  rd S1;    rmad;                           
+    ld [g4]+g3;               ld.replace_l R2;                                                                                                                       
+L2S:ld [a2]+(2*UPHW);         ld.normal R1;          rd S0;  rd S1;    rmac;        loop_begin;              
+L2E:ld [g4]+g3;               ld.replace_l R2;                                      loop_end;
+    add a1,SIZEVEC16 * UPHW;  mvB a2,a3;             wr.straight;                                                                                        
+    st.laddr [a0]+1;          mvB  g4,a1;                                                  
+    ld [g4]+g3;              
+    ld [a2]+(2*UPHW); 
+L1E:ld [g4]+g3;                                                                     loop_end;
+    rts;
+    fnop;
+    fnop;     
+   .size   _mat_by_vec_chfx_chfx_rfl, .-_mat_by_vec_chfx_chfx_rfl
+                                                                                                                                                                                                     

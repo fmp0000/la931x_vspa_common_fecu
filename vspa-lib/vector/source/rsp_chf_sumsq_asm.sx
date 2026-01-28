@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           rsp_chf_sumsq_asm.sx
+//! @brief          Compute y = sum( abs( x ).^2 ) where x in complex 16-bit half-fixed, y in real 32-bit single-precision floating-pt. 
+//! @author         NXP Semiconductors
+// =============================================================================
+
+    .section .text
+
+// _VR  = # of halfwords of one  VRA register
+// _VRH = # of halfwords of half VRA register
+#define _VR     (__AU_COUNT__*4)
+#define _VRH    (__AU_COUNT__*2)
+
+    .global _rsp_chf_sumsq_circ_asm
+    .type _rsp_chf_sumsq_circ_asm, @function
+    .size _rsp_chf_sumsq_circ_asm, _rsp_chf_sumsq_circ_asm_end -_rsp_chf_sumsq_circ_asm
+    
+    .global _rsp_chf_sumsq_line_asm
+    .type _rsp_chf_sumsq_line_asm, @function
+    .size _rsp_chf_sumsq_line_asm, _rsp_chf_sumsq_line_asm_end -_rsp_chf_sumsq_line_asm
+    
+_rsp_chf_sumsq_circ_asm:   
+    // a0: pointer to x (source)
+    set.range a0, a1, g1;   // enable DMEM wrapping
+_rsp_chf_sumsq_line_asm:
+    sl g2, g0, 6;           // g2 = g0 * 64: Number of half-words at input           
+    ld [a0]+g2;                                                     clr.VRA; clr.au; 
+    ld [a0]-g2;                                                     set.prec half_fixed, half_fixed, single, single, single;              
+    ld.laddr [a0]+1;                                                set.Smode S0straight, S1straight, S2zeros; // fake load                                              
+    ld.laddr [a0]+1;    ld.h2h R0;  
+    ld.laddr [a0]+1;    ld.l2l R0;                                                          setB.loop g0, 1;    
+    ld.laddr [a0]+1;    clr R0;         rd S0;  rd S1;  rd S2;      // "clr R0" causes a redundant "cmac". This is to support L=1 without using cmp/jmp.
+    ld.laddr [a0]+1;    ld.normal R0;   rd S0;                                                   
+    ld.laddr [a0]+1;    ld.normal R0;   rd S0;  rd S1;              cmac;                   loop_begin; loop_end;
+                                                                    cmac;
+                                                                                            set.prec single, single, single, single, single;
+                                                                                            set.Smode S0straight, S1real1, S2zeros;
+                        set.rot R0r8;                                   
+                                                                            wr.hlinecplx;   setB.loop 8;  // write 32 floats into R0, to be summed into one float
+                        ror;            rd S0;  rd S1;                                      clr.au;                 
+                        ror;            rd S0;                                              mv g2, 0;                              
+                        ror;            rd S0;                      cmac;                   loop_begin; loop_end;                                                                                      
+                                                                    fnop;
+                                                                    fnop;   
+                                                                    fnop;
+                                                                            wr.hlinecplx;
+                                        rd S0;                                              setB.loop 3;
+                        fnop;   
+                                                                    cmad;      
+                        fnop;                                                               loop_begin; loop_end;
+                        rts;                                                wr.hlinecplx;
+                        mv.w g0,[rS0]; // 2-cycle delay                                               
+                        set.range a0, g2, 0; // disable DMEM wrapping. 1-cycle delay.
+_rsp_chf_sumsq_line_asm_end:        
+_rsp_chf_sumsq_circ_asm_end:
+// =============================================================================
+

@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2018 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           mini_dft_sfl_hfl_asm.sx
+//! @brief          DFT ASSEMBLY source file
+//! @author         NXP Semiconductors.
+// =============================================================================
+#include "vspa.h"
+
+#define VR     (__AU_COUNT__*4)       // Number of halfwords for one VRA register
+#define HVR    (__AU_COUNT__*2)       // Number of halfwords for half of VRA register
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mini_dft_sfl_hfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mini_dft_sfl_hfl_asm
+    .type _mini_dft_sfl_hfl_asm, @function
+    .size _mini_dft_sfl_hfl_asm, _mini_dft_sfl_hfl_asm_end -_mini_dft_sfl_hfl_asm
+_mini_dft_sfl_hfl_asm:
+
+    // ABI:
+    //  a0 - input pointer (complex half-precision)
+	//  a1 - output pointer 	
+    //  g0 - N_DFT    value (uint32) (sequence length)
+    //
+    // Register usage:
+    // -----------------------------------------------------------------------------------------------------------
+    // Compute g1 = nco_freq = floor(2^31 / N_DFT)
+	// Compute g3 = ceil(N_DFT/16)
+	//
+	// R0R1R2R3R4R5 - input
+	// R7	 		- output 
+    // -----------------------------------------------------------------------------------------------------------
+	
+	
+	
+	clr.VRA;
+	mv g1,0x80000000;                                                																   	    	    // g1 = 2^31                             (opC, 1 cycles) 
+	sr g2,g0,1;																														   	    	    // g2 = floor(N_ZC / 2)		     	     (opS, 1 cycles)
+	add g1,g1,g2;                                                    																   	    	    // g1 = 2^30 + floor(N_ZC / 2)           (opS, 1 cycles)	
+	div g1,g1,g0;                                                    																   	    	    // g1 = div(2^31 + floor(N_ZC / 2), N_ZC)(opS, 7 cycles)				 
+	add g3,g0,31;															  																		// g3 = N_DFT + 32 - 1																						
+	sr g3,g3,5;																																		// g3 = (N_DFT + 32 - 1) / 32 
+	sub g0,g0,2;
+																							set.nco normal,0,0;										// Initialize NCO						 (opD, 2 cycles)
+	ld.laddr [a0]+1; 						   												setB.VRAincr rS0, 4;							   	// load [x(0) ...x(15)]
+	ld.laddr [a0]+1;																		setB.VRAptr rS0,0*VR;									// load [x(16)...x(31)]																																																								
+	ld.laddr [a0]+1;																		mv nco_freq,g1;											// load [x(32)...x(47)]
+	ld.laddr [a0]+1;		ld.normal R0;													set.prec single, single, single, single, single;		// load [x(48)...x(63)]
+	ld.laddr [a0]+1;		ld.normal R1;	rd S0; rd S1; rd S2;							set.Smode S0word, S1nco, S2zeros;						// load [x(64)...x(79)]
+	ld.laddr [a0]+0;		ld.normal R2;		   rd S1; rd S2;  							setB.loop g0,7;											// load [x(80)...x(95)]
+	setA.VRAptr rV,7*VR;	ld.normal R3;		   rd S1; rd S2;    cmad; 					setB.VRAptr rS2,7*VR;
+	setA.VRAptr rSt,7;		ld.normal R4;		   rd S1; rd S2;	cmad;					add nco_k,2;					 										
+							ld.normal R5;		   rd S1; rd S2;    cmad; 					mv nco_freq,g1;
+												   rd S1; rd S2;	cmad;					
+												   					cmad;   wr.hlinecplx;    					loop_begin;    
+											 rd S0; rd S1; rd S2;	cmad;   wr.hlinecplx; 	set.Smode S0word, S1nco, S2hlinecplx;	
+											        rd S1; rd S2;		    wr.hlinecplx;
+											        rd S1; rd S2;	 cmad;  wr.hlinecplx;									
+											        rd S1; rd S2;	 cmad;  wr.hlinecplx;	add nco_k,2;
+								                    rd S1; rd S2;	 cmad;  wr.hlinecplx;	mv nco_freq,g1;	    		
+											        rd S1; rd S2;	 cmad;  									loop_end;
+											        			     cmad;   wr.hlinecplx;	set.prec single, single, single, single, half;
+											rd S0; rd S1; rd S2;	 cmad;   wr.hlinecplx;
+											       rd S1; rd S2;     	     wr.hlinecplx;	
+											       rd S1; rd S2;	cmad;    wr.hlinecplx;									
+											       rd S1; rd S2;	cmad;    wr.hlinecplx;	setB.loop g3,2;
+								                   rd S1; rd S2;	cmad;    wr.hlinecplx;	setB.VRAincr rV, HVR;
+								                   rd S1; rd S2;	cmad;   				set.VRArange1 rV, 7*VR,7*VR+HVR; 
+									                   				cmad;   wr.hlinecplx;					
+																	cmad;	wr.hlinecplx; 	 				loop_begin;
+	st.laddr [a1]+1;												cmad;	wr.hlinecplx; 					loop_end;						
+	rts;
+	nop;
+	nop;
+	
+	
+
+	
+_mini_dft_sfl_hfl_asm_end:
+

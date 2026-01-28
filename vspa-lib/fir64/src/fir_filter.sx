@@ -1,0 +1,235 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2022 - 2025  NXP
+
+
+//prototype:
+//void fir_filter(__fx16 *output , __fx16 *input, unsigned int num_samples, __fx16* history, float* filter_taps)
+//void fir_filter_circ(__fx16 *output , __fx16 *input, unsigned int num_samples, float* filter_taps, void* circ_base, unsigned int circ_size_byte);
+
+#define FILTER_DEF_ONLY
+
+#include "fir_filter.h"
+
+#ifdef __VSPA2__
+
+//For VSPA2
+#define NUM_FIR_HISTORY		(NUM_FIR_TAPS-1)
+#define LINE_LEN			64 //128 for VSPA3, 64 for VSPA2
+#define SAMPLE_LEN			2  //4   for VSPA3, 2  for VSPA2
+#define OF0					(NUM_FIR_HISTORY*SAMPLE_LEN-LINE_LEN*1)
+#define OF1					(-NUM_FIR_HISTORY*SAMPLE_LEN+LINE_LEN*3)
+#define LPCOUNT				(NUM_FIR_TAPS-33-6)        //this value must >= 1
+
+	.section    .text
+    .global _fir_filter
+    .type _fir_filter, @function
+    .global _fir_filter_circ
+    .type _fir_filter_circ, @function
+    
+_fir_filter_circ:
+	sr g1,g1,1;				//convert byte size to 16-bit word size
+	set.range a0, a3, g1;
+	set.range a1, a3, g1;
+	mv a3, a2;            //taps to a3 
+    add a2, a1, -256;     //set history buffer to 2 line ahead of input   
+_fir_filter:
+	clr.VRA;
+	add a2,LINE_LEN*2-NUM_FIR_HISTORY*SAMPLE_LEN;
+	add a1,LINE_LEN*2-NUM_FIR_HISTORY*SAMPLE_LEN;
+	ld.laddr [a3]+1;												
+	ld [a3]+0;																	
+	ld.laddr [a2]+1;															
+	ld.laddr [a2]-0;ld.normal R6;												set.VRAincr rSt, -1;//set.VRAincr rSt,1;
+	ld [a1]+OF0;	ld.normal R7;												//set.creg 26,3;	//3 register totate enable
+					ld.h2l R0;													sr	g2,g0,7;
+					ld.l2h_h2l R0;												and g2,1;  //odd num of lines
+					ld.l2h R1;													set.rot	R0R1r2,R4R5l2; //set.rot	R0R1R2r2,R4R5R6l2;
+																				set.prec single,half_fixed,half,single,half_fixed;//set.prec single,half_fixed,half,F24,half_fixed; 	
+																				set.VRAptr rS0,6*64;	set.VRAincr rS0,2;
+									rd S0;rd S1;rd S2;	ror;					set.smode S0hword,S1straight,S2zeros;//loop_begin;	loop_end;
+									rd S0;rd S1;		ror;					mv g1,LPCOUNT;//set.creg 19, 1; // set VAU output width to 2 lines
+									rd S0;rd S1;		ror;	rmad;			sr	g0,g0,6;//sr	g0,g0,7;
+									rd S0;rd S1;		ror;	rmac;			sub g0,1;							
+									rd S0;rd S1;		ror;	rmac;								set.loop 25, 1;		
+									rd S0;rd S1;		ror;	rmac;								add g0,g0,g2;		
+									rd S0;rd S1;		ror;	rmac;								loop_begin;loop_end;		
+					ld.h2l R1;		rd S0;rd S1;		ror;	rmac;								set.loop g1, 1;//32 ror after this line, then update R2									
+									rd S0;rd S1;		ror;	rmac;								
+									rd S0;rd S1;		ror;	rmac;								loop_begin;loop_end;
+									rd S0;rd S1;		ror;	rmac;								cmp g2,0;
+	ld.laddr [a1]-1;				rd S0;rd S1;		ror;	rmac;								
+	ld [a1]+OF1-LINE_LEN;			rd S0;rd S1;		ror;	rmac;			
+	ld.laddr [a2]-1;				rd S0;rd S1;		ror;	rmac;			
+					ld.normal R4;	rd S0;rd S1;		ror;	rmac;			set.VRAincr rS0,-2;   //30 ror after this line
+					ld.normal R5;	rd S0;rd S1;				rmac;			set.VRAptr rS1,4*64;
+										  rd S1;		rol;	rmac;								set.loop g0,l0b,l0e;
+									rd S0;rd S1;		rol;	rmac;			
+l0b:								rd S0;rd S1;		rol;	rmad;								loop_begin;
+									rd S0;rd S1;		rol;	rmac;								set.loop 24, 1;
+									rd S0;rd S1;		rol;	rmac;			set.VRAptr rV,0*64;
+									rd S0;rd S1;		rol;	rmac;	wr.straight;set.VRAptr rst,0;
+									rd S0;rd S1;		rol;	rmac;								loop_begin;loop_end;
+									rd S0;rd S1;		rol;	rmac;								set.loop g1, 1;	
+	ld.laddr [a1]+1;ld.normal R5;	rd S0;rd S1;		rol;	rmac;					//32 rol after this line							
+									rd S0;rd S1;		rol;	rmac;							loop_begin;loop_end;	
+									rd S0;rd S1;		rol;	rmac;		st.laddr [a0]+1;
+	ld.laddr [a1]+1;				rd S0;rd S1;		rol;	rmac;
+					ld.h2l R0;		rd S0;rd S1;		rol;	rmac;
+	ld [a1]+OF0-LINE_LEN;			rd S0;rd S1;		rol;	rmac;									
+					ld.l2h_h2l R0;	rd S0;rd S1;		rol;	rmac;
+									rd S0;rd S1;		rol;	rmac;			set.VRAincr rS0,2;		
+					ld.l2h R1;		rd S0;rd S1;				rmac;			set.VRAptr rS1,0*64;
+										  rd S1;		ror;	rmac;
+									rd S0;rd S1;		ror;	rmac;			
+									rd S0;rd S1;		ror;	rmad;			
+									rd S0;rd S1;		ror;	rmac;								
+									rd S0;rd S1;		ror;	rmac;			set.VRAptr rV,4*64;
+									rd S0;rd S1;		ror;	rmac;	wr.straight;set.VRAptr rst,4;		
+									rd S0;rd S1;		ror;	rmac;									
+									rd S0;rd S1;		ror;	rmac;		 						set.loop 22, 1;
+									rd S0;rd S1;		ror;	rmac;																
+									rd S0;rd S1;		ror;	rmac;								loop_begin;loop_end;	
+					ld.h2l R1;		rd S0;rd S1;		ror;	rmac;								set.loop g1, 1;//32 ror after this line, then update R2									
+	ld.laddr [a1]+1;				rd S0;rd S1;		ror;	rmac;								
+									rd S0;rd S1;		ror;	rmac;								loop_begin;loop_end;
+									rd S0;rd S1;		ror;	rmac;								
+	ld.laddr [a1]-2;				rd S0;rd S1;		ror;	rmac;			
+					ld.normal R2;	rd S0;rd S1;		ror;	rmac;			
+	ld [a1]+OF1;	ld.normal R5;	rd S0;rd S1;		ror;	rmac;			
+									rd S0;rd S1;		ror;	rmac;			st.laddr [a0]+1;	set.VRAincr rS0,-2;   //30 ror after this line
+					ld.normal R4;	rd S0;rd S1;				rmac;			set.VRAptr rS1,4*64;
+					ld.normal R3;		  rd S1;		rol;	rmac;
+l0e:								rd S0;rd S1;		rol;	rmac;								loop_end;
+									rd S0;rd S1;		rol;	rmad;								set.loop 24, 1;
+									rd S0;rd S1;		rol;	rmac;								jmp.ne	lrte;  //jum must be here to make sure the wr.straight is run below in case of jump
+									rd S0;rd S1;		rol;	rmac;			set.VRAptr rV,0*64;	
+									rd S0;rd S1;		rol;	rmac;	wr.straight;set.VRAptr rst,0;
+									rd S0;rd S1;		rol;	rmac;								loop_begin;loop_end;
+									rd S0;rd S1;		rol;	rmac;								set.loop g1, 1;	
+	ld.laddr [a1]+1;ld.normal R5;	rd S0;rd S1;		rol;	rmac;								//32 rol after this line							
+									rd S0;rd S1;		rol;	rmac;								loop_begin;loop_end;
+									rd S0;rd S1;		rol;	rmac;		st.laddr [a0]+1;
+	ld.laddr [a1]+1;				rd S0;rd S1;		rol;	rmac;
+					ld.h2l R0;		rd S0;rd S1;		rol;	rmac;
+	ld [a1]+OF0-LINE_LEN;	ld.normal R3;	rd S0;rd S1;		rol;	rmac;									//R3 used as the first line of history
+					ld.l2h_h2l R0;	rd S0;rd S1;		rol;	rmac;
+					ld.normal R2;	rd S0;rd S1;		rol;	rmac;			set.VRAincr rS0,2;		//R2 used as the second line of history
+					ld.l2h R1;		rd S0;rd S1;				rmac;			set.VRAptr rS1,0*64;
+										  rd S1;		ror;	rmac;
+									rd S0;rd S1;		ror;	rmac;			
+									rd S0;rd S1;		ror;	rmad;			
+									rd S0;rd S1;		ror;	rmac;								
+									rd S0;rd S1;		ror;	rmac;			set.VRAptr rV,4*64;
+									rd S0;rd S1;		ror;	rmac;	wr.straight;set.VRAptr rst,4;										 
+lrte:	/*set.creg 19, 0;*/ 		rts;								st.laddr [a0]+1;set.VRAptr rst,3
+																		st.laddr [a2]+1;	
+	/*set.creg 26,0;*/													st.laddr [a2]+1;	
+																																	
+																			
+_fir_filter_end:
+F_fir_filter_end:
+
+
+
+#else
+
+//For VSPA3
+#define NUM_FIR_HISTORY		(NUM_FIR_TAPS-1)
+#define OF0					(NUM_FIR_HISTORY*4-128*3)
+#define OF1					(-NUM_FIR_HISTORY*4+128*4)
+
+	.section    .text
+    .global _fir_filter
+    .type _fir_filter, @function
+    .global _fir_filter_circ
+    .type _fir_filter_circ, @function
+    
+_fir_filter_circ:
+	set.range a0, a3, g1
+	set.range a1, a3, g1
+	mv a3, a2;            //taps to a3 
+    add a2, a1, -256;     //set history buffer to 2 line ahead of input   
+_fir_filter:
+	clr.VRA;
+	ld.laddr [a3]+1;												
+	ld [a3];																	add a2,128*2-NUM_FIR_HISTORY*4;
+	ld.laddr [a2]+1;																add a1,128*2-NUM_FIR_HISTORY*4;
+	ld.laddr [a2]-1;ld.normal R7;												set.VRAincr rSt,1;
+	ld.laddr [a1]+1;ld.normal R3;												set.creg 26,3;	//3 register totate enable
+					ld.h2l R0;													
+	ld.laddr [a1]+1;ld.l2h_h2l R0;												
+					ld.l2h R1;													set.rot	R0R1R2r2,R4R5R6l2;
+					ld.h2l R2;													set.prec single,half_fixed,half,F24,half_fixed; 	
+					ld.l2h R2;													set.VRAptr rS0,7*64;	set.VRAincr rS0,2;
+									rd S0;rd S1;rd S2;	ror;					set.smode S0hword,S1straight,S2zeros;//loop_begin;	loop_end;
+									rd S0;rd S1;		ror;					set.creg 19, 1; // set VAU output width to 2 lines
+									rd S0;rd S1;		ror;	rmad;			sr	g0,g0,7;
+									rd S0;rd S1;		ror;	rmac;										
+									rd S0;rd S1;		ror;	rmac;										
+									rd S0;rd S1;		ror;	rmac;										
+									rd S0;rd S1;		ror;	rmac;								set.loop g0,l0b,l0e;		
+									rd S0;rd S1;		ror;	rmac;										
+l0b:								rd S0;rd S1;		ror;	rmac;								loop_begin;									
+									rd S0;rd S1;		ror;	rmac;								set.loop 15, 1;	
+									rd S0;rd S1;		ror;	rmac;										
+									rd S0;rd S1;		ror;	rmac;								loop_begin;loop_end;									
+	ld [a1]+OF0;					rd S0;rd S1;		ror;	rmac;			
+									rd S0;rd S1;		ror;	rmac;
+					ld.h2l R4;		rd S0;rd S1;		ror;	rmac;								
+					ld.l2h R4;		rd S0;rd S1;		ror;	rmac;
+					mv R2,R4;		rd S0;rd S1;		ror;	rmac;
+									rd S0;rd S1;		ror;	rmac;			set.VRAptr rS0,3*64;//32 ror after this line, then update R2									
+									rd S0;rd S1;		ror;	rmac;								set.loop 21, 1;
+									rd S0;rd S1;		ror;	rmac;								
+									rd S0;rd S1;		ror;	rmac;								loop_begin;loop_end;
+	ld.laddr [a1]+1;				rd S0;rd S1;		ror;	rmac;							
+	ld.laddr [a1]+1;				rd S0;rd S1;		ror;	rmac;								
+									rd S0;rd S1;		ror;	rmac;			
+	ld.laddr [a1]+1;ld.h2l R6;		rd S0;rd S1;		ror;	rmac;			
+	ld.laddr [a1]-4;ld.l2h R6;		rd S0;rd S1;		ror;	rmac;			
+	ld [a1]+OF1;	ld.h2l R4;		rd S0;rd S1;		ror;	rmac;			
+					ld.l2h_h2l R4;	rd S0;rd S1;		ror;	rmac;			set.VRAincr rS0,-2;   //30 ror after this line
+					ld.l2h R5;		rd S0;rd S1;				rmac;			set.VRAptr rS1,4*64;
+										  rd S1;		rol;	rmac;
+									rd S0;rd S1;		rol;	rmac;			
+									rd S0;rd S1;		rol;	rmad;			
+									rd S0;rd S1;		rol;	rmac;				
+									rd S0;rd S1;		rol;	rmac;			set.VRAptr rV,0*64;
+									rd S0;rd S1;		rol;	rmac;	wr.straight;set.VRAptr rst,0;
+									rd S0;rd S1;		rol;	rmac;		st.laddr [a0]+1;
+									rd S0;rd S1;		rol;	rmac;		st.laddr [a0]+1;							
+									rd S0;rd S1;		rol;	rmac;								set.loop 18, 1;
+									rd S0;rd S1;		rol;	rmac;								
+									rd S0;rd S1;		rol;	rmac;								loop_begin;loop_end;
+									rd S0;rd S1;		rol;	rmac;								
+									rd S0;rd S1;		rol;	rmac;								
+									rd S0;rd S1;		rol;	rmac;		set.VRAptr rS0,7*64+62;			
+					ld.normal R6;	rd S0;rd S1;		rol;	rmac;					//32 rol after this line							
+									rd S0;rd S1;		rol;	rmac;							set.loop 21, 1;	
+									rd S0;rd S1;		rol;	rmac;								
+									rd S0;rd S1;		rol;	rmac;							loop_begin;loop_end;	
+	ld.laddr [a1]+1;				rd S0;rd S1;		rol;	rmac;
+	ld.laddr [a1]+1;				rd S0;rd S1;		rol;	rmac;
+	ld.laddr [a1]+1;				rd S0;rd S1;		rol;	rmac;
+					ld.h2l R0;		rd S0;rd S1;		rol;	rmac;
+	ld.laddr [a1]-3;ld.l2h_h2l R0;	rd S0;rd S1;		rol;	rmac;
+					ld.l2h R1;		rd S0;rd S1;		rol;	rmac;
+					ld.h2l R2;		rd S0;rd S1;		rol;	rmac;			set.VRAincr rS0,2;
+					ld.l2h R2;		rd S0;rd S1;				rmac;			set.VRAptr rS1,0*64;
+										  rd S1;		ror;	rmac;
+									rd S0;rd S1;		ror;	rmac;			
+									rd S0;rd S1;		ror;	rmad;			
+	ld.laddr [a1]+1;				rd S0;rd S1;		ror;	rmac;								
+	ld.laddr [a1]+2;				rd S0;rd S1;		ror;	rmac;			set.VRAptr rV,4*64;
+	ld.laddr [a1]+1;				rd S0;rd S1;		ror;	rmac;	wr.straight;set.VRAptr rst,4;		
+					ld.normal R6;	rd S0;rd S1;		ror;	rmac;		st.laddr [a0]+1;	
+l0e:				ld.normal R4;	rd S0;rd S1;		ror;	rmac;		st.laddr [a0]+1;	loop_end; 
+
+	set.creg 19, 0; 	rts;			
+									st.laddr [a2]+1;	set.VRAptr rst,4
+	set.creg 26,0;					st.laddr [a2]+1;																
+																			
+_fir_filter_end:
+F_fir_filter_end:
+
+#endif

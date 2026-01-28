@@ -1,0 +1,130 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors All rights reserved
+
+// =============================================================================
+//! @file           bitRev256sEbyE.sx
+//! @brief          IPPU procedure to perfrom shiftting and bit-reversal of 256 
+//!                 sub-carriers. 
+//! @author         NXP Semiconductors.
+// =============================================================================
+// bitRev256sEbyE.sx -- IPPU procedure to perfrom shiftting and bit-reversal of 256
+//                sub-carriers.
+//
+// bitRev256sEbyE(
+//     vspa_complex_float16 *pOut,
+//     vspa_complex_float16 const *pIn );
+//
+// arg0: pOut       = pointer to the linear output buffer.
+// arg1: pIn        = pointer to bit-reversed input buffer.
+//
+// =============================================================================
+
+    .ippu
+    .global     _ippu_args
+    .type       _ippu_args, %object
+    .icomm      _ippu_args,  (2 * 4)
+
+    .section    .itext
+    .global     _bitRev256sEbyE
+    .type       _bitRev256sEbyE, %function
+
+_bitRev256sEbyE:
+    // -------------------------------------------------------------------------
+    // Load input arguments:
+    // -------------------------------------------------------------------------
+    ld      as1, +0;                          // Load output buffer address.
+    ld      as0, +1;                          // Load input buffer address.
+    
+    // -------------------------------------------------------------------------
+    // Initialize core registers:
+    // -------------------------------------------------------------------------
+    mv      mem_elem_rd_ptr, 0;              // Reset memory read pointer.
+    mv      mem_elem_wr_ptr, 0;              // Reset memory write pointer.
+    mv      r_wr_ptr, 0;                     // Reset register write pointer.
+    mv      r_rd_ptr, 0;                     // Reset register read pointer.
+    
+    // --------------------------------------------------------------------------
+    // bit-reversal
+    // --------------------------------------------------------------------------
+    mv a1, as1;
+    mv a0, as0;
+    set.range a1, as1, 512;
+    set.br a1, fft256;
+    mv m1, 256;
+    ld.vcpu [a1]+2, 0, normal, 0, normal;       // dummy load to offset the output pointer.
+    nop;
+    mv m0, 64;
+    nop;
+    
+    // Load 1st line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 15;
+    nop;
+    st.vcpu [a1]-2, 0, br, +8, e32;
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_begin 0;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_end 0;
+    st.vcpu [a1]+6, 0, br, +8, e32;                         // store 32 sub-carriers from R0.
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    // Load 2nd line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 16;
+    nop;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;        // store 32 sub-carriers from R0.
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    // Load 3rd line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 16;
+    nop;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;        // store 32 sub-carriers from R0.
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    // Load 4th line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 16;
+    nop;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;        // store 32 sub-carriers from R0.
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.    
+    // Load 5th line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 16;
+    nop;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;        // store 32 sub-carriers from R0.
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    // Load 6th line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 16;
+    nop;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;        // store 32 sub-carriers from R0.
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    // Load 7th line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 16;
+    nop;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;        // store 32 sub-carriers from R0.
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    // Load 8th line
+    ld.vcpu [a0]+m0,  0, normal, 0, normal;     
+    nop;
+    set.loop 0, 16;
+    mv as1, 0;
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;        // store 32 sub-carriers from R0.
+    set.range a1, as1, 0;
+    nop;
+    done;
+    nop;
+    nop;
+
+    .size       _bitRev256sEbyE, . - _bitRev256sEbyE

@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           chp_chf_csp_vmult_asm.sx
+//! @brief          y = x1.*x2 where x1 in complex 16-bit half-fixed, x2 in complex 32-bit single-precision floating-pt,
+//!                 y in complex 16-bit half-precision floating-pt. 
+//! @author         NXP Semiconductors
+// =============================================================================
+
+#include "vspa.h"
+
+    .section .text
+
+// _VR  = # of halfwords of one  VRA register
+// _VRH = # of halfwords of half VRA register
+#define _VR     (__AU_COUNT__*4)
+#define _VRH    (__AU_COUNT__*2)
+
+// =============================================================================
+    .global _chp_chf_csp_vmult_asm
+    .type _chp_chf_csp_vmult_asm, @function
+    .size _chp_chf_csp_vmult_asm, _chp_chf_csp_vmult_asm_end -_chp_chf_csp_vmult_asm    
+_chp_chf_csp_vmult_asm:    
+    
+    // register usage:
+    //
+    // VRA layout:
+    // R0: x1
+    // R1: y = x1.*x2
+    // R2: x2[0..15]
+    // R3: x2[16..31]
+    //
+    // rS0: {0,0.5}, incr0.5
+    // rS1: {2,3}, incr1
+    // rV:  {1,1.5}, incr0.5
+    // rSt: 1
+    //
+    // DMEM pointers:
+    // a0: pointer to y  (destination)
+    // a1: pointer to x1 (source) 
+    // a2: pointer to x2 (source)
+                                         
+    ld.laddr [a1]+1;    clr.VRA;
+    ld.laddr [a2]+1;                    set.VRAincr rS0, _VRH;
+    ld.laddr [a2]+1;                    set.VRAincr rS1, _VR;
+                        ld.normal R0;   set.VRAincr rV,_VRH;                set.VRAptr rS1, 2*_VR; // avoid using set.VRArange due to lack of opC spaces
+    ld.laddr [a1]+1;    ld.normal R2;                               set.prec half_fixed, single, half_fixed,single,half;                                          
+    ld.laddr [a2]+1;    ld.normal R3;   rd S0;  rd S1;  rd S2;      set.Smode S0hlinecplx, S1hlinecplx, S2zeros;
+    ld.laddr [a2]+1;                    rd S0;  rd S1;                      set.VRAptr rV,_VR+_VRH; 
+                        ld.normal R0;                               cmad;   set.VRAptr rS0,0;           setB.loop g0, LS, LE;
+    ld.laddr [a1]+1;    ld.normal R2;                               cmad;   set.VRAptr rS1, 2*_VR;
+    ld.laddr [a2]+1;    ld.normal R3;   rd S0;  rd S1;                      set.VRAptr rSt,1;
+    ld.laddr [a2]+1;                    rd S0;  rd S1;                      set.VRAptr rV,_VR;
+                        ld.normal R0;                               cmad;   wr.hlinecplx;   set.VRAptr rS1, 2*_VR;  
+LS: ld.laddr [a1]+1;    ld.normal R2;                               cmad;   wr.hlinecplx;   set.VRAptr rS0,0;       loop_begin;                  
+    ld.laddr [a2]+1;    ld.normal R3;   rd S0;  rd S1;                                 
+    ld.laddr [a2]+1;                    rd S0;  rd S1;                                      set.VRAptr rV,_VR;                            
+LE: st.laddr [a0]+1;    ld.normal R0;                               cmad;   wr.hlinecplx;   set.VRAptr rS1, 2*_VR;  loop_end;    
+    rts;
+    fnop;
+    fnop;        
+_chp_chf_csp_vmult_asm_end:
+// =============================================================================
+
+
+// =============================================================================
+    .global _chp_chf_csp_vmult_nonalgn_asm
+    .type _chp_chf_csp_vmult_nonalgn_asm, @function
+    .size _chp_chf_csp_vmult_nonalgn_asm, _chp_chf_csp_vmult_nonalgn_asm_end -_chp_chf_csp_vmult_nonalgn_asm    
+_chp_chf_csp_vmult_nonalgn_asm:    
+    
+    // register usage:
+    //
+    // VRA layout:
+    // R0: x1
+    // R1: y = x1.*x2
+    // R2: x2[0..15]
+    // R3: x2[16..31]
+    //
+    // rS0: {0,0.5}, incr0.5
+    // rS1: {2,3}, incr1
+    // rV:  {1,1.5}, incr0.5
+    // rSt: 1
+    //
+    // DMEM pointers:
+    // a0: pointer to y  (destination)
+    // a1: pointer to x1 (source) 
+    // a2: pointer to x2 (source)
+        
+    ld.laddr [a1]+1;                                                clr.VRA;                                         
+    ld.laddr [a1]+0;                                                set.VRAincr rS0, _VRH;                    
+    ld.laddr [a2]+1;                                                set.VRAincr rS1, _VR;                    
+    ld.laddr [a2]+1;    ld.h2l R0;                                  set.VRAptr rS1, 2*_VR;
+                        ld.l2h R0;                                  set.VRAincr rV,_VRH;    set.VRAptr rSt,1;                  
+    ld.laddr [a1]+1;    ld.normal R2;                                                       set.prec half_fixed, single, half_fixed,single,half;
+    ld.laddr [a1]+0;    ld.normal R3;   rd S0;  rd S1;  rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;                                          
+    ld.laddr [a2]+1;                    rd S0;  rd S1;                                                              setB.loop g0, NVS, NVE;
+    ld.laddr [a2]+1;    ld.h2l R0;                                  cmad;                   set.VRAptr rS0,0;
+                        ld.l2h R0;                                  cmad;                   set.VRAptr rS1, 2*_VR;  set.VRAptr rV,_VR;           
+NVS:ld.laddr [a1]+1;    ld.normal R2;                                                                               loop_begin;
+    ld.laddr [a1]+0;    ld.normal R3;   rd S0;  rd S1;                                      set.VRAptr rV,_VR;
+    ld.laddr [a2]+1;                    rd S0;  rd S1;                      wr.hlinecplx;       
+    ld.laddr [a2]+1;    ld.h2l R0;                                  cmad;   wr.hlinecplx;   set.VRAptr rS0,0;
+NVE:st.laddr [a0]+1;    ld.l2h R0;                                  cmad;                   set.VRAptr rS1, 2*_VR;  loop_end;
+    rts;                
+    fnop;               
+    fnop;                            
+_chp_chf_csp_vmult_nonalgn_asm_end:
+// =============================================================================
+

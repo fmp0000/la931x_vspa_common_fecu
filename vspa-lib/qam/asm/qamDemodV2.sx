@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           qamDemod256V2.sx
+//! @brief          QAM demodulator for 256QAM
+//! @author         NXP Semiconductor, Inc.
+// =============================================================================
+#include "vspa.h"
+
+#define _VR     (__AU_COUNT__*4)
+#define _VRH    (__AU_COUNT__*2)
+
+#include "qam.h"
+
+    .global _qamDemod256V2
+    .type   _qamDemod256V2, @function
+
+_qamDemod256V2:
+    clr.VRA;
+    mv a7, a1;
+    set.prec single, single, half_fixed, single, single;
+    mv g2, QAM_NORMALIZATION_256;   
+    floatx2n g2, 3;                                                                                                                //g2=8/sqrt(170)
+    fill.w [rV], g2; setA.VRAptr rV, 7*_VR;                                                                                       
+    floatx2n g0, g0, -4;                                                                                                           //g0=snr/16
+    fill.w [rV], g0; setA.VRAptr rS0, 7*_VR;     
+    rd S0; rd S1; rd S2; set.Smode S0hword, S1straight,S2zeros;                                 
+    sub g1, 4;
+    mv a5, _qamDemodScratch;  rmad;
+    mv a2, a5;                     
+    mv a4, a2;                                          setA.VRAptr rV, 5*_VR;
+    ld.laddr [a0]+1;                                    setB.VRAptr rS0, 5*_VR;
+    mv a3, (128)*UPHW;                     wr.straight;                                                                             //R5=snr/16*(8/sqrt(170))
+    mv.w g0, [rS0];                                     setA.VRAptr rS0, 7*_VR;                                                     //g0=snr/16*(8/sqrt(170))=8K*snr/16
+    ld.laddr [a0]+1; ld.normal R0;                                  set.prec single, half, single, single, half_fixed;
+                                   rd S0; rd S1;                    set.prec single, half, single, single, half;                    //S0=snr/16; S1=y; S2=0                          
+    set.loop g1, 3;                                                           
+    ld.laddr [a0]+1; ld.normal R0;               rmad;              set.prec single, half, single, single, half_fixed;
+                                   rd S1;                           set.prec single, half, single, single, half;                    //S1=y
+                                     setA.VRAptr rSt, 6;setB.VRAptr rV, 6*_VR;                                                                              
+    ld.laddr [a0]+1; ld.normal R0;               rmad;              set.prec single, half, single, single, half_fixed;
+                                   rd S1;              wr.straight; set.prec single, half, single, single, half;                    //R6=y*snr/16=b0&b4 in HFixed
+//////////////////////////////////calculate first llr pair: b0=snr/16*Real(y) b4=snr/16*Imag(y)////////////////////////////////
+    st.llr8  [a1]+a3;                                  wr.straight;                                                     loop_begin; //R6=b0&b4 in HFloat; store 8-bit b0&b4 to output buffer 
+    ld.laddr [a0]+1; ld.normal R0;               rmad;              set.prec single, half, single, single, half_fixed;
+    st.laddr [a2]+1;               rd S1;              wr.straight; set.prec single, half, single, single, half;        loop_end;   //store HFloat b0&b4 to scratch buffer
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    st.llr8  [a1]+a3;                                  wr.straight;
+    st.laddr [a2]+1; ld.normal R0;               rmad;              set.prec single, half, single, single, half_fixed;
+    ld.laddr [a4]+1;               rd S1;              wr.straight; set.prec single, half, single, single, half;
+    st.llr8  [a1]+a3;                                  wr.straight; 
+    st.laddr [a2]+1;                             rmad;              setB.VRAptr rS2, 5*_VR;
+    set.loop g1, 3;                                    wr.straight; 
+    st.llr8  [a1]+a3;                                  wr.straight; setB.VRAptr rS0, 0*_VR;
+    st.laddr [a2]+1;                                                set.Smode S0chs, S0abs, S1real1,S2i1r1i1r1;                 
+    ld.laddr [a4]+1; ld.normal R0;                     wr.straight; set.prec half, half, single, single, half_fixed;
+    st.llr8  [a1]+a3;              rd S0; rd S1;rd S2; wr.straight; set.prec half, half, single, single, half;                      //S0=-|b0| and -|b4|; S1=1; S2=8K*snr/16 
+    st.laddr [a2]+1;  mv a1, a7;                                                                               
+    ld.laddr [a4]+1; ld.normal R0;               rmad;              set.prec half, half, single, single, half_fixed;
+                                   rd S0;                           set.prec half, half, single, single, half;
+    add a1, (32)*UPHW;mv a2, a5;                                            
+    ld.laddr [a4]+1; ld.normal R0;               rmad;              set.prec half, half, single, single, half_fixed;
+                                   rd S0;              wr.straight; set.prec half, half, single, single, half;                      //R6=b1&b5 in HFixed
+////////////////////////////////////calculate 2nd llr pair: b1=8K*snr/16-|b0|; b5=8K*snr/16-|b4|/////////////////////////////////////                                   
+    st.llr8  [a1]+a3;                                  wr.straight;                                                    loop_begin;  //R6=b1&b5 in HFloat; store 8-bit b1&b5 to output
+    ld.laddr [a4]+1; ld.normal R0;               rmad;              set.prec half, half, single, single, half_fixed;
+    st.laddr [a2]+1;               rd S0;              wr.straight; set.prec half, half, single, single, half;         loop_end;    //store HFloat b1&b5 to scratch buffer
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
+    st.llr8  [a1]+a3; mv a4, a5;                       wr.straight;
+    st.laddr [a2]+1; ld.normal R0;               rmad;              set.prec half, half, single, single, half_fixed;    
+    ld.laddr [a4]+1;               rd S0;              wr.straight; set.prec half, half, single, single, half;
+    st.llr8  [a1]+a3;                                  wr.straight;
+    st.laddr [a2]+1;                             rmad;                  
+    set.loop g1, 3;                                    wr.straight;
+    st.llr8  [a1]+a3;                                  wr.straight;
+    floatx2n g0, -1;                                                                                                                //g0=4k*snr/16
+    st.laddr [a2]+1;                                   wr.straight;  
+    st.llr8  [a1]+a3;                                  wr.straight; setB.VRAptr rV, 5*_VR;
+    fill.w [rV], g0;
+    ld.laddr [a4]+1; ld.normal R0;                                   set.prec half, half, single, single, half_fixed;
+    st.laddr [a2]+1;               rd S0; rd S2;                     set.prec half, half, single, single, half;                     //S0=-|b1| & -|b5|; S1=1; S2=4K*snr/16                              
+    mv a1, a7;                                                      setA.VRAptr rV, 6*_VR;                                                     
+    ld.laddr [a4]+1; ld.normal R0;               rmad;               set.prec half, half, single, single, half_fixed;
+                                   rd S0;                            set.prec half, half, single, single, half;
+    add a1, (64)*UPHW;mv a2, a5;                                                 
+    ld.laddr [a4]+1; ld.normal R0;               rmad;               set.prec half, half, single, single, half_fixed;
+                                   rd S0;              wr.straight;  set.prec half, half, single, single, half;                     //R6=b2&b6 in HFixed
+//////////////////////////////////calculate 3rd llr pair: b2=4K*snr/16-|b1|; b6=4K*snr/16-|b5|///////////////////////////////////// /                                                                     
+    st.llr8  [a1]+a3;                                  wr.straight;                                                    loop_begin;  //R6=b2&b6 in HFloat; store 8-bit b2&b6 to output
+    ld.laddr [a4]+1; ld.normal R0;               rmad;               set.prec half, half, single, single, half_fixed;
+    st.laddr [a2]+1;               rd S0;              wr.straight;  set.prec half, half, single, single, half;        loop_end;    //store HFloat b2&b6 to scratch buffer
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////      
+    st.llr8  [a1]+a3; mv a4, a5;                       wr.straight;
+    st.laddr [a2]+1; ld.normal R0;               rmad;               set.prec half, half, single, single, half_fixed;
+    ld.laddr [a4]+1;               rd S0;              wr.straight;  set.prec half, half, single, single, half;
+    st.llr8  [a1]+a3;                                  wr.straight;
+    st.laddr [a2]+1;                             rmad;             
+    add g1, 4;                                         wr.straight;
+    st.llr8  [a1]+a3;                                  wr.straight;
+    floatx2n g0, -1;                                                                                                                //g0=2k*snr/16
+    st.laddr [a2]+1;                                   wr.straight; set.prec half, half, single, single, half_fixed;
+    st.llr8  [a1]+a3;                                  wr.straight; setB.VRAptr rV, 5*_VR;
+    ld.laddr [a4]+1; 
+    fill.w [rV], g0; ld.normal R0; 
+    ld.laddr [a4]+1;               rd S0; rd S2;                                                                                    //S0=-|b2| & -|b6|; S1=1; S2=2K*snr/16 
+    st.laddr [a2]+1; ld.normal R0; mv a1, a7;
+    ld.laddr [a4]+1;               rd S0;       rmad;
+    set.loop g1, 2;  ld.normal R0;
+    ld.laddr [a4]+1;               rd S0;       rmad;               setB.VRAptr rV, 6*_VR;
+    add a1, (96)*UPHW;ld.normal R0;    
+//////////////////////////////////calculate 4th llr pair: b3=2K*snr/16-|b2|; b7=2K*snr/16-|b6|//////////////                                  
+    ld.laddr [a4]+1;               rd S0;       rmad; wr.straight;  loop_begin;                                                     //R6=b3&b7 in HFixed
+    st.llr8  [a1]+a3;ld.normal R0;                                  loop_end;                                                       //store 8-bit LLRs b3&b7 to output
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    rts;
+    fnop;
+    fnop;
+    
+  .size   _qamDemod256V2, .-_qamDemod256V2   
+ 

@@ -1,0 +1,514 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2022 - 2025  NXP
+
+
+#define INPREC	half_fixed			//half //half_fixed	//precision for QEC input data
+#define IMPREC	half_fixed			//half //half_fixed	//precision for QEC intermediate data
+    
+#ifndef VSPA2	   //For VSPA3         
+
+#if 0                                                                            
+    .global _qec_opt_asm
+    .type _qec_opt_asm, @function
+    .size _qec_opt_asm, _qec_opt_asm_end - _qec_opt_asm
+    
+/* Static imbalance compensation */
+_qec_opt_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+
+R3 - para
+*/
+	                                                                                         clr.VRA;	
+																							 set.VRAptr 0*64,4*64,1*64,1*64,2;  
+	ld g1,[a2+80];	/*jump 80 bytes to DC*/													 set.creg 23, 1;  //order_g = 2^1;
+	                                                                                         sr g0, g0, 8; 
+																						     set.VRArange1 rS0, 0*64+0, 0*64+4*8;
+																							 set.VRArange1 rS1, 2*64, 3*64;
+	ld.laddr [a2];     		                                                                 set.VRAincr rS0, 4;                                                           	                                                                                     
+	ld.laddr [a1]+1;                                                  fill.w [rv],g1;        
+	ld.laddr [a1]+1;																	     set.prec  single, half_fixed, half_fixed, f24, half_fixed;
+	ld.laddr [a1]+1;			ld.normal R0;											     set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	ld.laddr [a1]+1;	        ld.normal R4;												 set.creg 19, 1;
+	ld.laddr [a1]+1;	        ld.normal R5;			 									 				set.VRAptr rV, 2*64; 
+	ld.laddr [a1]+1;	        ld.normal R6;	rol;	rd S0; rd S1; rd S2;				 				set.rot R4R5l1; 
+	ld.laddr [a1]+1;	        ld.normal R7;			rd S0; rd S1;						 				set.VRAptr rS1, 6*64; 
+	ld.laddr [a1]+1;		    ld.normal R4;  	rol;	rd S0; rd S1;	       	rmad;       				set.rot R6R7l1;
+							    ld.normal R5;		    rd S0; rd S1;	       	rmac;       				set.VRAptr rS1, 4*64;	set.rot R4R5l1;	 
+								ld.normal R6;   rol;	rd S0; rd S1;			rmad;       				set.loop g0, 16; 		
+								ld.normal R7;	        rd S0; rd S1;           rmac;       				set.VRAptr rS1, 6*64; 	set.rot R6R7l1;		
+												rol;   	rd S0; rd S1;           rmad;						set.VRAincr rS1, 1; 	
+														rd S0; rd S1;           rmac;   wr.straight;		set.VRAptr rS1, 2*64+63;   						loop_begin;	
+														rd S0; rd S1; rd S2;	rmad;						set.VRAincr rS1, 64;	set.Smode S0group2nc, S1hlinecplx, S2hlinecplx;
+														rd S1; 					rmac;   wr.straight;  		mv a4,128;          										
+	ld.laddr [a1]+1;									rd S1; 					cmad;																	
+	ld.laddr [a1]+1;									rd S1; 					cmad;	wr.straight;						
+	ld.laddr [a1]+1;									rd S1; 					cmad;										set.rot R4R5l1; 
+	ld.laddr [a1]+1;			ld.normal R4;			rd S1; 					cmad;	wr.straight;						set.VRAptr rS1, 2*64+63;
+	ld.laddr [a1]+1;			ld.normal R5;			rd S1; 					cmad;	wr.hlinecplx;						set.VRAincr rS1, 1; 
+	stld.laddr [a0]+1,[a1]+a4;	ld.normal R6;			rd S1; 					cmad;	wr.hlinecplx;	                   	
+	stld.laddr [a0]+1,[a1]+a4;	ld.normal R7;	rol;	rd S0; rd S1; rd S2;	cmad;	wr.hlinecplx;                      	set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	stld.laddr [a0]+1,[a1]+a4;	ld.normal R4;			rd S0; rd S1;			cmad;	wr.hlinecplx;   					set.VRAptr rS1, 6*64; 
+								ld.normal R5;	rol;	rd S0; rd S1;	       	rmad;	wr.hlinecplx;	st.laddr [a0]+1;   	set.rot R6R7l1;
+								ld.normal R6;			rd S0; rd S1;	       	rmac;	wr.hlinecplx;	st.laddr [a0]+1;   	set.VRAptr rS1, 4*64;
+								ld.normal R7;	rol;	rd S0; rd S1;			rmad;	wr.hlinecplx;	st.laddr [a0]+1;   	set.rot R4R5l1;
+														rd S0; rd S1;           rmac;	wr.hlinecplx;	st.laddr [a0]+1;   	set.VRAptr rS1, 6*64; 
+												rol;   	rd S0; rd S1;           rmad;					st.laddr [a0]+1;   	set.rot R6R7l1;					loop_end;
+	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	set.creg 23, 0;		
+_qec_opt_asm_end:
+
+
+
+#else        //enhanced with tx/rx pnswap
+
+#if 0
+    .global _qec_opt_asm
+    .type _qec_opt_asm, @function
+    .size _qec_opt_asm, _qec_opt_asm_end - _qec_opt_asm
+
+/* Static imbalance compensation */
+_qec_opt_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+
+R3 - para
+*/
+	                                                                                         clr.VRA;	
+																							 set.VRAptr 0*64,4*64,1*64,1*64,2;  
+	ld g1,[a2+80];	/*jump 80 bytes to DC*/													 set.creg 23, 1;  //order_g = 2^1;
+	                                                                                         sr g0, g0, 8; 
+																						     set.VRArange1 rS0, 0*64+0, 0*64+4*8;
+																							 set.VRArange1 rS1, 2*64, 3*64;
+	ld.laddr [a2];     		                                                                 set.VRAincr rS0, 4;                                                           	                                                                                     
+	ld.laddr [a1]+1;                                                  fill.w [rv],g1;        
+	ld.laddr [a1]+1;																	     set.prec  single, half_fixed, half_fixed, f24, half_fixed;
+	ld.laddr [a1]+1;			ld.normal R0;											     set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	ld.laddr [a1]+1;	        ld.normal R4;												 set.creg 19, 1;
+	ld.laddr [a1]+1;	        ld.normal R5;			 									 				set.VRAptr rV, 2*64; 
+	ld.laddr [a1]+1;	        ld.normal R6;	rol;	rd S0; rd S1; rd S2;				 				set.rot R4R5l1; 
+	ld.laddr [a1]+1;	        ld.normal R7;			rd S0; rd S1;						 				set.VRAptr rS1, 6*64; 
+	ld.laddr [a1]+1;		    ld.normal R4;  	rol;	rd S0; rd S1;	       	rmad;       				set.rot R6R7l1;
+							    ld.normal R5;		    rd S0; rd S1;	       	rmac;       				set.VRAptr rS1, 4*64;	set.rot R4R5l1;	 
+								ld.normal R6;   rol;	rd S0; rd S1;			rmad;       				set.loop g0, 16; 		
+								ld.normal R7;	        rd S0; rd S1;           rmac;       				set.VRAptr rS1, 6*64; 	set.rot R6R7l1;		
+												rol;   	rd S0; rd S1;           rmad;						set.VRArange1 rst, 2, 3;
+														rd S0; rd S1;           rmac;   wr.straight;		set.VRAptr rS1, 2*64;   set.VRAincr rst, 1;		loop_begin;	
+														rd S0; rd S1; rd S2;	rmad;						set.Smode S0i1r1i1r1, S1straight, S2i1r1i1r1;
+															 					rmac;   wr.straight;  		mv a4,128;          										
+	ld.laddr [a1]+1;									rd S1; 					rmad;																	
+	ld.laddr [a1]+1;										 							wr.straight;						
+	ld.laddr [a1]+1;									rd S1; 					rmad;										set.rot R4R5l1; 
+	ld.laddr [a1]+1;			ld.normal R4;				 							wr.straight;						
+	ld.laddr [a1]+1;			ld.normal R5;			rd S1; 					rmad;	wr.straight;						
+	stld.laddr [a0]+1,[a1]+a4;	ld.normal R6;															                   	set.VRAptr rS1, 4*64;
+	stld.laddr [a0]+1,[a1]+a4;	ld.normal R7;	rol;	rd S0; rd S1; rd S2;	rmad;	wr.straight;                      	set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	stld.laddr [a0]+1,[a1]+a4;	ld.normal R4;			rd S0; rd S1;									   					set.VRAptr rS1, 6*64; 
+								ld.normal R5;	rol;	rd S0; rd S1;	       	rmad;	wr.straight;	st.laddr [a0]+1;   	set.rot R6R7l1;
+								ld.normal R6;			rd S0; rd S1;	       	rmac;					st.laddr [a0]+1;   	set.VRAptr rS1, 4*64;
+								ld.normal R7;	rol;	rd S0; rd S1;			rmad;	wr.straight;	st.laddr [a0]+1;   	set.rot R4R5l1;
+														rd S0; rd S1;           rmac;					st.laddr [a0]+1;   	set.VRAptr rS1, 6*64; 
+												rol;   	rd S0; rd S1;           rmad;					st.laddr [a0]+1;   	set.rot R6R7l1;					loop_end;
+	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	set.creg 23, 0;		
+_qec_opt_asm_end:
+
+#else
+	//2nd round optimization, core load reduced to 3% at 491Msps.  gain is multiplied on f1,f2,f4, so gain is not explicitly used.
+    .global _qec_opt_asm
+    .type _qec_opt_asm, @function
+    .size _qec_opt_asm, _qec_opt_asm_end - _qec_opt_asm
+
+/* Static imbalance compensation */
+_qec_opt_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+*/
+	                                                                                         clr.VRA;	
+																							 set.VRAptr 0*64,4*64,0*64+8,2*64,2;  
+	                                                                                         sr g0, g0, 7; 
+	                                                                                         mv a4, 128;
+	                                                                                         set.VRArange1 rst, 2, 3;
+																						     set.VRArange1 rS0, 0*64+0, 0*64+4;
+	ld.laddr [a2];     		                                                                 set.VRAincr rS0, 4;                                                           	                                                                                     
+	ld.laddr [a1]+1;                                             							 set.VRAincr rst, 1;
+	ld.laddr [a1]+1;																	     set.prec  single, half_fixed, single, f24, half_fixed;
+	ld.laddr [a1]+1;			ld.normal R0;											     set.Smode S0i1r1i1r1, S1straight, S2i1r1i1r1;
+	ld.laddr [a1]+1;	        ld.normal R4;												 set.creg 19, 1;
+	ld.laddr [a1]+1;	        ld.normal R5;			 									 			set.loop g0, 4;
+	ld.laddr [a1]+1;	        ld.normal R6;	rol;	rd S0; rd S1; rd S2;				 			set.rot R4R5l1; 
+	ld.laddr [a1]+1;	        ld.normal R7;			rd S0; rd S1;						 			set.VRAptr rS1, 6*64; 
+	ld.laddr [a1]+1;		    ld.normal R4;  	rol;	rd S0; rd S1;	       	rmad;       			set.rot R6R7l1;
+	ld.laddr [a1]+1;		    ld.normal R5;		    rd S0; rd S1;	       	rmac;       			set.VRAptr rS1, 4*64;		 
+	ld.laddr [a1]+1;			ld.normal R6;   rol;	rd S0; rd S1;			rmad;       			set.rot R4R5l1;		
+	ld.laddr [a1]+1;			ld.normal R7;	        rd S0; rd S1;           rmac;       			set.VRAptr rS1, 6*64; 			
+	ld.laddr [a1]+1;			ld.normal R4;	rol;   	rd S0; rd S1;           rmad;					set.rot R6R7l1;
+	ld.laddr [a1]+1;			ld.normal R5;			rd S0; rd S1;           rmac;   wr.straight;	set.VRAptr rS1, 4*64;		 			
+	stld.laddr [a0]+a4,[a1]+1;	ld.normal R6;	rol;	rd S0; rd S1; 			rmad;					set.rot R4R5l1;			loop_begin;
+	stld.laddr [a0]+a4,[a1]+1;	ld.normal R7;			rd S0; rd S1;			rmac;   wr.straight;  	set.VRAptr rS1, 6*64; 	       										
+	stld.laddr [a0]+a4,[a1]+1;	ld.normal R4;	rol;	rd S0; rd S1;			rmad;					set.rot R6R7l1;								
+	stld.laddr [a0]+a4,[a1]+1;	ld.normal R5;			rd S0; rd S1;			rmac;	wr.straight;	set.VRAptr rS1, 4*64;	loop_end;
+	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	nop;	
+_qec_opt_asm_end:
+
+
+    .global _mixer_qec_asm
+    .type _mixer_qec_asm, @function
+    .size _mixer_qec_asm, _mixer_qec_asm_end - _mixer_qec_asm
+
+/* Static imbalance compensation */
+_mixer_qec_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+g1 - NCO phase
+g2 - NCO freq
+*/
+	                                                                                         clr.VRA;	
+																							 set.prec half_fixed, half_fixed, single, F24, half_fixed;
+																							 set.creg 255, 8;
+																							 set.nco normal, 0x1, 0;
+																							 mv nco_freq, g2;
+																							 mv nco_phase, g1;
+																							 set.VRAptr 4*64,4*64,3*64+8,4*64,0;  
+	                                                                                         sr g0, g0, 8; 
+	                                                                                         mv a4, 128;
+																							 set.VRArange1 rS0, 3*64+0, 3*64+4;
+	ld.laddr [a2];     		                                                                                                                            	                                                                                     
+	ld.laddr [a1]+1;                                             							 set.VRAincr rst, 1;
+	ld.laddr [a1]+1;																	     set.VRAincr rS0, 64; 
+	ld.laddr [a1]+1;			ld.normal R3;											     set.VRAincr rV, 64;
+	ld.laddr [a1]+1;			ld.normal R4;           									 set.loop g0, 17;
+    ld.laddr [a1]+1;            ld.normal R5;           rd S0; rd S1; rd S2;				 set.Smode S0hlinecplx,S1nco,S2zeros;		
+    ld.laddr [a1]+1;            ld.normal R6;           rd S0; rd S1;						 set.creg 19, 1;
+    ld.laddr [a1]+1;            ld.normal R7;           rd S0; rd S1;           cmad;					set.rot R4R5l1;
+    ld.laddr [a1]+1;            ld.normal R4;           rd S0; rd S1;           cmad;					set.VRAptr rS0, 4*64; 
+								ld.normal R5;           rd S0; rd S1;           cmad;		 			
+								ld.normal R6;           rd S0; rd S1;           cmad;					set.VRArange1 rst, 0, 1;
+								ld.normal R7;           rd S0; rd S1;           cmad;   wr.hlinecplx;	set.VRAincr rS0, 4;
+LB:														rd S0; rd S1;			cmad;	wr.hlinecplx; 	set.prec  single, half_fixed, single, f24, half_fixed;	set.VRAptr rS0, 3*64;  loop_begin;
+												rol;	rd S0; rd S1; rd S2;	cmad;	wr.hlinecplx;	set.Smode S0i1r1i1r1, S1straight, S2i1r1i1r1;
+														rd S0; rd S1;			cmad;	wr.hlinecplx;	set.VRAptr rS1, 6*64; 	set.VRAptr rV, 4*64;
+	ld.laddr [a1]+1;							rol;	rd S0; rd S1;	    	rmad;	wr.hlinecplx;	set.rot R6R7l1;
+	ld.laddr [a1]+1;									rd S0; rd S1;	       	rmac;	wr.hlinecplx;	set.VRAptr rS1, 4*64;		 
+	ld.laddr [a1]+1;							rol;	rd S0; rd S1;		   	rmad;	wr.hlinecplx;	set.rot R4R5l1;		
+	ld.laddr [a1]+1;			ld.normal R4;			rd S0; rd S1;       	rmac;	wr.hlinecplx;	set.VRAptr rS1, 6*64; 			
+								ld.normal R5;	rol;   	rd S0; rd S1;           rmad;	       			set.rot R6R7l1; 		set.VRAincr rV, 0;
+								ld.normal R6;			rd S0; rd S1;           rmac;	wr.straight;	set.VRAincr rS0, 64; 	set.VRAptr rS0, 4*64;	 			
+	st.laddr [a0]+1;			ld.normal R7;									rmad;					set.prec half_fixed, half_fixed, single, F24, half_fixed;
+	stld.laddr [a0]+a4,[a1]+1;							rd S0; rd S1; rd S2;    rmac;	wr.straight;	set.Smode S0hlinecplx,S1nco,S2zeros;			
+	stld.laddr [a0]+a4,[a1]+1;							rd S0; rd S1;						      		set.rot R4R5l1;	
+    stld.laddr [a0]+a4,[a1]+1;	           				rd S0; rd S1;           cmad;	wr.straight;	set.VRAincr rV, 4*64;
+	stld.laddr [a0]+a4,[a1]+1;	ld.normal R4;			rd S0; rd S1;			cmad;					set.VRAptr rS0, 4*64;
+    st.laddr [a0]+1;            ld.normal R5;           rd S0; rd S1;           cmad;	wr.straight;	set.VRAincr rV, 1*64;
+	st.laddr [a0]+1;			ld.normal R6;			rd S0; rd S1;			cmad;					set.VRAptr rS1, 4*64;
+LE:	st.laddr [a0]+1;			ld.normal R7;			rd S0; rd S1;			cmad;	wr.hlinecplx;	set.VRAincr rS0, 4;		loop_end;
+	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	nop;	
+_mixer_qec_asm_end:
+
+
+
+    .global _qec_mixer_asm
+    .type _qec_mixer_asm, @function
+    .size _qec_mixer_asm, _qec_mixer_asm_end - _qec_mixer_asm
+_qec_mixer_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+g1 - NCO phase
+g2 - NCO freq
+*/
+	                                                                                         clr.VRA;	
+																							 set.prec half_fixed, half_fixed, single, F24, half_fixed;
+																							 set.creg 255, 8;
+																							 set.nco normal, 0x1, 0;
+																							 mv nco_freq, g2;
+																							 mv nco_phase, g1;
+																							 set.VRAptr 0*64,4*64,0*64+8,2*64,2;  
+	                                                                                         add g0,255;
+	                                                                                         sr g0, g0, 8; // (g0+255)/256 to align to 8 lines 
+	                                                                                         mv a4, 128;
+																						     set.VRArange1 rS0, 0*64+0, 0*64+4;
+	ld.laddr [a2];     		                                                                 set.VRAincr rS0, 4;                                                           	                                                                                     
+	ld.laddr [a1]+1;                                             							 
+	ld.laddr [a1]+1;																	     set.prec  single, half_fixed, single, f24, half_fixed;
+	ld.laddr [a1]+1;			ld.normal R0;											     set.Smode S0i1r1i1r1, S1straight, S2i1r1i1r1;
+	ld.laddr [a1]+1;	        ld.normal R4;												 set.creg 19, 1;
+	ld.laddr [a1]+1;	        ld.normal R5;			 									 			set.loop g0, 17;
+	ld.laddr [a1]+1;	        ld.normal R6;	rol;	rd S0; rd S1; rd S2;				 			set.rot R4R5l1; 
+	ld.laddr [a1]+1;	        ld.normal R7;			rd S0; rd S1;						 			set.VRAptr rS1, 6*64; 
+	ld.laddr [a1]+1;		    ld.normal R4;  	rol;	rd S0; rd S1;	       	rmad;       			set.rot R6R7l1;
+								ld.normal R5;		    rd S0; rd S1;	       	rmac;       			set.VRAptr rS1, 4*64;		 
+								ld.normal R6;   rol;	rd S0; rd S1;			rmad;       			set.rot R4R5l1;		
+								ld.normal R7;	        rd S0; rd S1;           rmac;       			set.VRAptr rS1, 6*64; 			
+												rol;   	rd S0; rd S1;           rmad;					set.rot R6R7l1;	set.VRAincr rS0, 64;  	loop_begin;
+														rd S0; rd S1;           rmac;   wr.straight;	set.prec half_fixed, half_fixed, single, F24, half_fixed;	set.VRAptr rS0, 2*64;	
+														rd S0; rd S1; rd S2;	rmad;					set.Smode S0hlinecplx,S1nco,S2zeros;	set.VRAptr rS1, 4*64;
+	ld.laddr [a1]+1;									rd S0; rd S1;			rmac;   wr.straight;  	set.VRAptr rS0, 2*64;  										
+	ld.laddr [a1]+1;									rd S0; rd S1;	       	cmad;					set.rot R4R5l1;			
+	ld.laddr [a1]+1;									rd S0; rd S1;	       	cmad;	wr.straight;	set.VRAptr rS0, 2*64;	
+	ld.laddr [a1]+1;			ld.normal R4;			rd S0; rd S1;			cmad;	
+	ld.laddr [a1]+1;			ld.normal R5;			rd S0; rd S1;           cmad;	wr.straight;	set.VRAptr rS0, 2*64;
+								ld.normal R6;			rd S0; rd S1;           cmad;	wr.hlinecplx;	set.VRAincr rS0, 4;
+    st.laddr [a0]+1;			ld.normal R7;         	rd S0; rd S1;           cmad;	wr.hlinecplx;	set.VRAptr rS0, 0*64;
+	stld.laddr [a0]+a4,[a1]+1;													cmad;	wr.hlinecplx;	set.prec  single, half_fixed, single, f24, half_fixed;
+	stld.laddr [a0]+a4,[a1]+1;					rol;	rd S0; rd S1; rd S2;	cmad;	wr.hlinecplx;	set.Smode S0i1r1i1r1, S1straight, S2i1r1i1r1;
+	stld.laddr [a0]+a4,[a1]+1;	ld.normal R4;			rd S0; rd S1;					wr.hlinecplx;	set.VRAptr rS1, 6*64; 
+	st.laddr [a0]+1;			ld.normal R5;	rol;	rd S0; rd S1;	    	rmad;	wr.hlinecplx;	set.rot R6R7l1;
+	st.laddr [a0]+1;            ld.normal R6;		    rd S0; rd S1;	    	rmac;	wr.hlinecplx;	set.VRAptr rS1, 4*64; 
+	st.laddr [a0]+1;			ld.normal R7;	rol;	rd S0; rd S1;			rmad;	wr.hlinecplx;	set.rot R4R5l1;
+	st.laddr [a0]+1;									rd S0; rd S1;       	rmac;					set.VRAptr rS1, 6*64; loop_end;
+	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	nop;	
+_qec_mixer_asm_end:
+
+
+#endif
+#endif
+
+
+
+#if 0 //no used
+    .global _qec_opt_pow_acc_asm
+    .type _qec_opt_pow_acc_asm, @function
+    .size _qec_opt_pow_acc_asm, _qec_opt_pow_acc_asm_end - _qec_opt_pow_acc_asm
+    
+/* Static imbalance compensation */
+_qec_opt_pow_acc_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+
+R3 - para
+*/
+	                                                                                         clr.VRA;	
+																							 set.VRAptr 0*64,4*64,1*64,1*64,2;  
+	ld g1,[a2+80];	/*jump 80 bytes to DC*/													 set.creg 23, 1;  //order_g = 2^1;
+	                                                                                         sr g0, g0, 8; 
+																						     set.VRArange1 rS0, 2*64, 3*64;
+																							 set.VRArange1 rS1, 2*64, 3*64;
+																							 set.VRArange1 rV, 2*64, 3*64;
+																							 set.VRArange1 rst, 2, 3;
+	ld.laddr [a2];     		                                                                 set.VRAincr rS0, 4;                                                           	                                                                                     
+	ld.laddr [a1]+1;                                                  						 fill.w [rv],g1;        
+	ld.laddr [a1]+1;																		     set.prec  single, half_fixed, half_fixed, f24, half_fixed;
+	ld.laddr [a1]+1;			ld.normal R0;												     set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	ld.laddr [a1]+1;	        ld.normal R4;													 set.creg 19, 1;
+	ld.laddr [a1]+1;	        ld.normal R5;			 										 				set.VRAptr rV, 2*64;
+	ld.laddr [a1]+1;	        ld.normal R6;	rol;	rd S0; rd S1; rd S2;/*04X*/				 				set.rot R4R5l1; 
+	ld.laddr [a1]+1;	        ld.normal R7;			rd S0; rd S1;		/*04*/				 				set.VRAptr rS1, 6*64; 
+	ld.laddr [a1]+1;		    ld.normal R4;  	rol;	rd S0; rd S1;	    /*06*/	rmad;       				set.rot R6R7l1;
+							    ld.normal R5;		    rd S0; rd S1;	    /*06*/	rmac;       				set.VRAptr rS1, 4*64;	set.rot R4R5l1;	 
+								ld.normal R6;   rol;	rd S0; rd S1;		/*04*/	rmad;       				set.loop g0, 24; 		
+								ld.normal R7;	        rd S0; rd S1;       /*04*/	rmac;       				set.VRAptr rS1, 6*64; 	set.rot R6R7l1;		
+												rol;   	rd S0; rd S1;       /*06*/	rmad;						set.VRAincr rS1, 1; 	set.VRAincr rst, 1; 
+														rd S0; rd S1;       /*06*/	rmac;   wr.straight;		set.VRAptr rS1, 2*64+63;					loop_begin;	
+														rd S0; rd S1; rd S2;/*021*/	rmad;						set.VRAincr rS1, 64;	set.Smode S0group2nc, S1hlinecplx, S2hlinecplx;
+	ld.laddr [a3]+0;									rd S1; 				/*3*/	rmac;   wr.straight;  		set.VRAptr rS0, 2*64; //mv a4,128;          										
+	ld.laddr [a1]+1;									rd S1; 				/*2*/	cmad;						set.VRAincr rS0, 64;											
+	ld.laddr [a1]+1;									rd S1; 				/*3*/	cmad;	wr.straight;						set.VRAptr rS2, 7*64;
+	ld.laddr [a1]+1;			ld.normal R7;			rd S1; 				/*2*/	cmad;										set.rot R4R5l1; 
+	ld.laddr [a1]+1;			ld.normal R4;			rd S1; 				/*3*/	cmad;	wr.straight;						set.VRAincr rV, 64; 
+	ld.laddr [a1]+1;			ld.normal R5;			rd S1; 				/*2*/	cmad;	wr.hlinecplx;						set.VRAptr rSt, 2;
+								ld.normal R6;			rd S1; 				/*3*/	cmad;	wr.hlinecplx;	st.laddr [a0]+1;    set.prec  half_fixed, half_fixed, single, single, single;               	
+								ld.normal R7;			rd S0; rd S1; rd S2;/*227*/	cmad;	wr.hlinecplx;   st.laddr [a0]+1;	set.smode S0straight,S1straight,S2hlinecplx;
+														rd S0; rd S1;       /*33*/	cmad;   wr.hlinecplx;   st.laddr [a0]+1;
+														rd S0; rd S1;       /*22*/	rmad;   wr.hlinecplx;	st.laddr [a0]+1;
+														rd S0; rd S1;       /*33*/	rmac;   wr.hlinecplx;   st.laddr [a0]+1;
+														rd S0; rd S1;       /*22*/	rmac;   wr.hlinecplx;   st.laddr [a0]+1;	set.VRAptr rS2, 1*64;
+														rd S0; rd S1;       /*33*/	rmac;   wr.hlinecplx;   st.laddr [a0]+1;	set.VRAptr rS1, 2*64+63;
+														rd S0; rd S1;       /*22*/	rmac;                   					set.VRAincr rS0, 4;set.VRAincr rS1, 1; 
+														rd S0; rd S1;       /*33*/	rmac;                                       set.VRAptr rS0, 0*64;set.prec  single, half_fixed, half_fixed, f24, half_fixed;
+	ld.laddr [a1]+1;							rol;	rd S0; rd S1; rd S2;/*04X*/	rmac;			                      		set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	ld.laddr [a1]+1;									rd S0; rd S1;		/*04*/	rmac;			   							set.VRAptr rS1, 6*64; 
+	ld.laddr [a1]+1;			ld.normal R4;	rol;	rd S0; rd S1;	    /*06*/	rmad;								  	 	set.rot R6R7l1;
+								ld.normal R5;			rd S0; rd S1;	    /*06*/	rmac;								   		set.VRAptr rS1, 4*64;
+								ld.normal R6;	rol;	rd S0; rd S1;		/*04*/	rmad;								   		set.rot R4R5l1; set.VRAincr rV, 0; 
+								ld.normal R7;			rd S0; rd S1;       /*04*/	rmac;	wr.even;		st.laddr [a0]+1;	set.VRAptr rS1, 6*64; 
+												rol;   	rd S0; rd S1;       /*06*/	rmad;					st.laddr [a3]+0;   	set.rot R6R7l1;				loop_end;
+	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	set.creg 23, 0;		
+_qec_opt_pow_acc_asm_end:
+#endif
+
+
+#else  //for VSPA2
+
+#if 0
+    .global _qec_opt_asm
+    .type _qec_opt_asm, @function
+    .size _qec_opt_asm, _qec_opt_asm_end - _qec_opt_asm
+    
+/* Static imbalance compensation */
+_qec_opt_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+return value: 0 error, too small num samples.
+R3 - para
+*/
+	                                                                                         clr.VRA;	
+																							 set.VRAptr 0*64,4*64,1*64,1*64,2;  
+	ld g1,[a2+40];	/*jump 80 bytes to DC*/											 
+	                                                                                         set.creg 23, 1;  //order_g = 2^1;
+	                                                                                         sr g0, g0, 7; 
+																						     set.VRArange1 rS0, 0*64+0, 0*64+4*8;
+																							 set.VRArange1 rS1, 2*64, 2*64+32;
+	ld.laddr [a2]+0;     		                                                             set.VRAincr rS0, 4;                                                           	                                                                                     
+	ld.laddr [a1]+1;                                                  fill.w [rv],g1;        
+																						     set.prec  single, half_fixed, half_fixed, single, half_fixed;
+	ld.laddr [a1]+1;			ld.normal R0;											     set.Smode S0i1r1i1r1, S1straight, S2zeros;
+						        ld.normal R4;												 set.creg 19, 1;set.VRAptr rV, 2*64;
+	ld.laddr [a1]+1;	        				rol;	rd S0; rd S1; rd S2;				 set.rot R4l1; 
+						        ld.normal R4;			rd S0; rd S1;						 cmp g0,0
+	ld.laddr [a1]+1;	        				rol;	rd S0; rd S1;	       	rmad;       				
+							    ld.normal R4;  		    rd S0; rd S1;	       	rmac;        jmp.eq		LERROR			 
+							    				rol;	rd S0; rd S1;			rmad;       				set.loop g0, 16; 		
+								ld.normal R4;           rd S0; rd S1;           rmac;       				set.VRArange1 rv, 2*64, 2*64+32;	
+												rol;   	rd S0; rd S1;           rmad;											
+														rd S0; rd S1;           rmac;   wr.straight;		set.VRAptr rS1, 2*64; set.VRAincr rS1, 32;	loop_begin;	
+														rd S0; rd S1; rd S2;	rmad;						 	set.Smode S0group2nc, S1hlinecplx, S2hlinecplx;
+														rd S1; 					rmac;   wr.straight;  		      										
+														rd S1; 					cmad;																	
+	ld.laddr [a1]+1;									rd S1; 					cmad;	wr.straight;						
+														rd S1; 					cmad;										
+	ld.laddr [a1]+1;									rd S1; 					cmad;	wr.straight;						set.VRAincr rv, 32;
+														rd S1; 					cmad;	wr.hlinecplx;						set.VRAincr rS1, 0; 
+	ld.laddr [a1]+1;			ld.normal R4;			rd S1; 					cmad;	wr.hlinecplx;	                   	set.VRAptr rS1, 4*64;
+												rol;	rd S0; rd S1; rd S2;	cmad;	wr.hlinecplx;   st.laddr [a0]+1;  	set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	ld.laddr [a1]+1;			ld.normal R4;  			rd S0; rd S1;			cmad;	wr.hlinecplx;   						
+												rol;	rd S0; rd S1;	       	rmad;	wr.hlinecplx;	st.laddr [a0]+1;   		
+								ld.normal R4;   		rd S0; rd S1;	       	rmac;	wr.hlinecplx;					   		
+												rol;	rd S0; rd S1;			rmad;	wr.hlinecplx;	st.laddr [a0]+1;   		
+								ld.normal R4;		   	rd S0; rd S1;           rmac;	wr.hlinecplx;					   	set.VRAincr rv, 0; 
+												rol;	rd S0; rd S1;           rmad;					st.laddr [a0]+1;   									loop_end;
+LERROR:	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	set.creg 23, 0;		
+_qec_opt_asm_end:
+
+#else //with pnswap support
+
+#if 0
+    .global _qec_opt_asm
+    .type _qec_opt_asm, @function
+    .size _qec_opt_asm, _qec_opt_asm_end - _qec_opt_asm
+    
+/* Static imbalance compensation */
+_qec_opt_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+return value: 0 error, too small num samples.
+R3 - para
+*/
+	                                                                                         clr.VRA;	
+																							 set.VRAptr 0*64,4*64,1*64,1*64,2;  
+	ld g1,[a2+40];	/*jump 80 bytes to DC*/											 
+	                                                                                         set.creg 23, 1;  //order_g = 2^1;
+	                                                                                         sr g0, g0, 7; 
+																						     set.VRArange1 rS0, 0*64+0, 0*64+4*8;
+																							 
+	ld.laddr [a2]+0;     		                                                             set.VRAincr rS0, 4;                                                           	                                                                                     
+	ld.laddr [a1]+1;                                                  fill.w [rv],g1;        
+																						     set.prec  single, half_fixed, half_fixed, single, half_fixed;
+	ld.laddr [a1]+1;			ld.normal R0;											     set.Smode S0i1r1i1r1, S1straight, S2zeros;
+						        ld.normal R4;												 set.creg 19, 1;set.VRAptr rV, 2*64;
+	ld.laddr [a1]+1;	        				rol;	rd S0; rd S1; rd S2;				 set.rot R4l1; 
+						        ld.normal R4;			rd S0; rd S1;						 cmp g0,0
+	ld.laddr [a1]+1;	        				rol;	rd S0; rd S1;	       	rmad;       				
+							    ld.normal R4;  		    rd S0; rd S1;	       	rmac;        jmp.eq		LERROR			 
+							    				rol;	rd S0; rd S1;			rmad;       				set.loop g0, 16; 		
+								ld.normal R4;           rd S0; rd S1;           rmac;       					
+												rol;   	rd S0; rd S1;           rmad;											
+														rd S0; rd S1;           rmac;   wr.straight;		set.VRAptr rS1, 2*64; loop_begin;	
+														rd S0; rd S1; rd S2;	rmad;						 	set.Smode S0i1r1i1r1, S1straight, S2i1r1i1r1;
+																				rmac;   wr.straight;  		      										
+														rd S1; 					rmad;																	
+	ld.laddr [a1]+1;										 							wr.straight;						
+														rd S1; 					rmad;										
+	ld.laddr [a1]+1;										 							wr.straight;						
+														rd S1; 					rmad;	wr.straight;						
+	ld.laddr [a1]+1;			ld.normal R4;				 											                   	set.VRAptr rS1, 4*64;
+												rol;	rd S0; rd S1; rd S2;	rmad;	wr.straight;	st.laddr [a0]+1;  	set.Smode S0i1r1i1r1, S1straight, S2zeros;
+	ld.laddr [a1]+1;			ld.normal R4;  			rd S0; rd S1;							   						
+												rol;	rd S0; rd S1;	       	rmad;	wr.straight;	st.laddr [a0]+1;   		
+								ld.normal R4;   		rd S0; rd S1;	       	rmac;							   		
+												rol;	rd S0; rd S1;			rmad;	wr.straight;	st.laddr [a0]+1;   		
+								ld.normal R4;		   	rd S0; rd S1;           rmac;									   	 
+												rol;	rd S0; rd S1;           rmad;					st.laddr [a0]+1;   									loop_end;
+LERROR:	rts;           				                                                       
+	set.creg 19, 0;				                                                       
+	set.creg 23, 0;		
+_qec_opt_asm_end:
+
+#else
+	//2nd round optimization, core load reduced to 3% at 491Msps.  gain is multiplied on f1,f2,f4, so gain is not explicitly used.
+	
+    .global _qec_opt_asm
+    .type _qec_opt_asm, @function
+    .size _qec_opt_asm, _qec_opt_asm_end - _qec_opt_asm
+    
+/* Static imbalance compensation */
+_qec_opt_asm:
+/*
+a0 - output
+a1 - input
+a2 - para
+g0 - num_samples
+return value: 0 error, too small num samples.
+R3 - para
+*/
+	                                                                                         clr.VRA;	
+	                                                                                         add g0, 31;
+																							 set.VRAptr 0*64,4*64,0*64+8,2*64,2;  
+	ld.laddr [a2]+0;     		                                                             set.VRAincr rS0, 4;                                                        	                                                                                     
+	ld.laddr [a1]+1;                                                  						 set.prec  single, half_fixed, single, single, half_fixed;
+																						     set.VRArange1 rS0, 0*64+0, 0*64+4;
+	ld.laddr [a1]+1;			ld.normal R0;											     set.rot R4l1; 
+						        ld.normal R4;												 sr g0, g0, 5;   //(g0+31)/32  align to line
+	ld.laddr [a1]+1;	        				rol;	rd S0; rd S1; rd S2;				 set.Smode S0i1r1i1r1, S1straight, S2i1r1i1r1;
+						        ld.normal R4;			rd S0; rd S1;						 cmp g0,0
+	ld.laddr [a1]+1;	        				rol;	rd S0; rd S1;	       	rmad;        				
+							    ld.normal R4;  		    rd S0; rd S1;	       	rmac;        jmp.eq		LERROR			 
+	ld.laddr [a1]+1;		    				rol;	rd S0; rd S1;			rmad;       			 		
+								ld.normal R4;           rd S0; rd S1;           rmac;       			set.loop g0, 2;		
+	ld.laddr [a1]+1;							rol;   	rd S0; rd S1;           rmad;											
+	ld.laddr [a1]+1;			ld.normal R4;			rd S0; rd S1;           rmac;   wr.straight;						loop_begin;	
+												rol;	rd S0; rd S1; 			rmad;					st.laddr [a0]+1;	loop_end;	 	
+LERROR:	rts;           				                                                       
+	nop;			                                                       
+	nop;	
+_qec_opt_asm_end:
+
+#endif
+#endif
+	
+#endif																				

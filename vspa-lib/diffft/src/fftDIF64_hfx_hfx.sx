@@ -1,0 +1,134 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+   .section   .text
+
+// =============================================================================
+//! @file           fftDIF64_hfx_hfx.sx
+//! @brief          64 pt FFT and IFFT functions using DIF   
+//! @author         NXP Semiconductors
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Subroutine name: fftDIF64_hfx_hfx/ifftDIF64_hfx_hfx
+//
+// Subroutines called by this subroutine:
+//    NONE
+//
+// Registers usage:
+//    as registers modified: as6.
+//    g registers modified:  NONE.
+//
+// ASM implementation description:
+//    Data for DIF butterflies is read into VRA. All stages are computed within the VRA 
+//      and final output is shipped off to memory.  
+//
+// Notes:
+//    NONE
+//
+// -----------------------------------------------------------------------------
+   .global  _fftDIF64_hfx_hfx
+   .type   _fftDIF64_hfx_hfx, @function
+_fftDIF64_hfx_hfx:
+#ifndef LIB_FFT_STUB
+	
+	jmp core_fftDIF64_hfx_hfx;
+	set.nco radix2, 1, 67108864;
+   	set.range a0, a2, g0;
+   	
+#else
+	rts;
+   	nop;
+   	nop;
+   	
+#endif // LIB_FFT_STUB
+
+   .size   _fftDIF64_hfx_hfx, .-_fftDIF64_hfx_hfx
+
+//===================================================================================
+   .global  _ifftDIF64_hfx_hfx
+   .type   _ifftDIF64_hfx_hfx, @function
+_ifftDIF64_hfx_hfx:
+#ifndef LIB_FFT_STUB
+
+	jmp core_fftDIF64_hfx_hfx;
+   	.quad ((0x0<<60) | (0x04<<54) | (0x2<<52) | (0x1<<36) | (0x1<<34) | (0x4000000<<2))
+   	set.range a0, a2, g0;
+   	
+#else
+	rts;
+   	nop;
+   	nop;
+   	
+#endif // LIB_FFT_STUB
+
+	nop;
+   	rts;
+   	nop;
+   	nop;
+
+   .size   _ifftDIF64_hfx_hfx, .-_ifftDIF64_hfx_hfx
+
+
+// ***************************** CORE FUNCTION *****************************
+   .type   core_fftDIF64_hfx_hfx, @function
+core_fftDIF64_hfx_hfx:
+	ld.laddr [a0]+1;																	clr.VRA;		 														
+	ld.laddr [a0]+1;																	set.creg 15, 0xB;		 														
+	ld.laddr [a0]+1;																	set.VRAincr rS2, 16;
+	setB.VRAptr rS0, 64;	ld.h2l R0;													set.VRAincr rS0, 16;
+							ld.l2h_h2l R0;												set.creg 13, 0x1;												
+							ld.l2h R1;													set.prec half_fixed, single, half_fixed, single, half_fixed;
+											rd S0; nco; rd S2;							set.Smode S0fftn, S2fftn;
+											rd S0; nco; rd S2;							mv nco_k, 2;				
+					 						rd S0; nco; rd S2;	dif.sau;				set.VRAincr rSt, 1;
+	setA.VRAptr rS2, 0;						rd S0; nco; rd S2;	dif.sau;				setB.VRAptr rS0, 32;
+																dif.sau;				set.VRAincr rV, 16;
+																dif.sau;
+																			wr.fftn;
+																			wr.fftn;																/*c0-c2*/
+																			wr.fftn;
+											rd S0; nco; rd S2;				wr.fftn;																/*c1-c3*/	
+	setA.VRAptr rS2, 64;					rd S0; nco; rd S2;							setB.VRAptr rS0, 96;				
+	setA.VRAptr rV, 0;						rd S0; nco; rd S2;	dif.sau;				mv nco_k, 4;
+											rd S0; nco; rd S2;	dif.sau;				set.creg 15, 0xC;				
+	setA.VRAptr rS2, 0;		 									dif.sau;				set.VRAincr rV, 32;
+	setA.VRAptr rS0, 16;										dif.sau;				set.VRAincr rS0, 32;
+																			wr.fft5;	set.VRAincr rS2, 32;										
+			 																wr.fft5;																/*d0-d1*/
+			 								rd S0; nco; rd S2;				wr.fft5;
+											rd S0; nco; rd S2;		 		wr.fft5;	mv nco_k, 8;												/*d2-d3*/			
+			 								rd S0; nco; rd S2;	dif.sau;				
+	setA.VRAptr rS2, 0;						rd S0; nco; rd S2;	dif.sau;				setB.VRAptr rS0, 16;
+	setA.VRAptr rV, 0;											dif.sau;				
+			 													dif.sau;				
+																			wr.fft4;
+											rd S0; nco; rd S2;				wr.fft4;	set.Smode S0fft3, S2fft3;
+			 								rd S0; nco; rd S2;				wr.fft4;	mv nco_k, 16;
+											rd S0; nco; rd S2;	dif.sau;	wr.fft4;
+	setA.VRAptr rS2, 0;						rd S0; nco; rd S2;	dif.sau;				setB.VRAptr rS0, 16;
+	setA.VRAptr rV, 0;											dif.sau;
+																dif.sau;
+																			wr.fft3;
+											rd S0; nco; rd S2;				wr.fft3;	set.Smode S0fft2, S2fft2;
+	 										rd S0; nco; rd S2;				wr.fft3;	mv nco_k, 32;
+											rd S0; nco; rd S2;	dif.sau;	wr.fft3;	
+	setA.VRAptr rS2, 0;						rd S0; nco; rd S2;	dif.sau;				setB.VRAptr rS0, 16;
+	setA.VRAptr rV, 0;											dif.sau;
+																dif.sau;
+																			wr.fft2;
+											rd S0; nco; rd S2;				wr.fft2;	set.Smode S0fft1, S2fft1;
+		 									rd S0; nco; rd S2;				wr.fft2;
+											rd S0; nco; rd S2;	dif.sau;	wr.fft2;	
+											rd S0; nco; rd S2;	dif.sau;
+	setA.VRAptr rV, 0;											dif.sau;
+																dif.sau;				mv a6, 0;	
+				 															wr.fft1;	set.range a0, a6, 0;
+																			wr.fft1;
+	st.laddr [a1]+1;														wr.fft1;	rts;
+																			wr.fft1;	set.creg  15, 0xA;
+	st.laddr [a1]+1;																	set.creg 13, 0x0;
+
+   .size   core_fftDIF64_hfx_hfx, .-core_fftDIF64_hfx_hfx
+// end
+//

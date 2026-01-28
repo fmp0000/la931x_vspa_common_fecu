@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           dot_prod_asm.sx
+//! @brief          Dot product ASSEMBLY source file
+//! @author         NXP Semiconductors.
+// =============================================================================
+#include "vspa.h"
+#define VR     (__AU_COUNT__*4)       // Number of halfwords for one VRA register
+#define HVR    (__AU_COUNT__*2)       // Number of halfwords for half of VRA register
+#define LPC    __AU_COUNT__-1         // Final loop counter
+
+// -----------------------------------------------------------------------------
+// Subroutine name: dot_prod_circ_x32chf_csp_asm
+// VRA layout:
+// {R0} - input buffer #0
+// {R1} - input buffer #1
+// {R0} - 16 complex single-precision dot product samples added for final result
+// ABI:
+//  a0 - 1st input pointer (no DMEM alignment)
+//  a1 - 2nd input pointer (no DMEM alignment)
+//  a2 - output pointer for dot product complex value (no DMEM alignment)
+//  a3 - base pointer for circular buffer (DMEM aligned)
+//  g0 - size of circular buffer in half-words (multiple of DMEM lines)
+//  g1 - number of input lines
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _dot_prod_circ_x32chf_csp_asm
+    .type _dot_prod_circ_x32chf_csp_asm, @function
+    .size _dot_prod_circ_x32chf_csp_asm, _dot_prod_circ_x32chf_csp_asm_end -_dot_prod_circ_x32chf_csp_asm
+_dot_prod_circ_x32chf_csp_asm:
+    
+    set.range a0,a3,g0;
+    set.range a1,a3,g0;
+    
+    ld.laddr [a0]+1;                                                       setB.loop g1, 5;
+    ld.laddr [a1]+1;                                                       clr.VRA;
+    ld.laddr [a0]+0;                                                       set.VRAincr rS0,HVR; 
+    ld.laddr [a1]+0;    ld.h2l R0;                                         setB.VRAptr rS1,1*VR; 
+                        ld.h2l R1;                                         mv g2, LPC;
+    ld.laddr [a0]+1;    ld.l2h R0;                                         set.VRAincr rS1,HVR;
+    ld.laddr [a1]+1;    ld.l2h R1;                                         set.prec half_fixed, half_fixed, half_fixed, single, single;  
+    ld.laddr [a0]+0;                      rd S0; rd S1; rd S2;    clr.au;  set.Smode S0conj, S0hlinecplx, S1hlinecplx, S2zeros;                   
+    ld.laddr [a1]+0;    ld.h2l R0;        rd S0; rd S1;                                             loop_begin;
+                        ld.h2l R1;                                cmac;                             
+    ld.laddr [a0]+1;    ld.l2h R0;                                cmac;    setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.l2h R1;                                         setB.VRAptr rS1,1*VR;
+    ld.laddr [a0]+0;                      rd S0; rd S1;                                             loop_end;                                
+                                                                           setB.loop g2,1; setA.VRAptr rS0,4;        
+                                          wr.hlinecplx;                    set.prec single, single, single, single, single; setA.VRAincr rS0,4;                                                                                                             
+                                          rd S0; rd S1;                    set.Smode S0word, S1cplx1, S2zeros;  
+                                          rd S0;                        
+                                          rd S0;                  cmac;    loop_begin;  loop_end;
+                                                                           mv a0,0;
+                                                                           set.range a0,a0,0;
+                                                                           set.range a1,a0,0;
+                                          wr.hlinecplx;                    setA.VRAptr rS0,0;
+                                          mv.w g1,[rS0];                   setA.VRAptr rS0,2;
+    rts;                                  mv.w g2,[rS0];
+    st [a2]+(2)*UPHW, g1;
+    st [a2]+0, g2;
+    
+_dot_prod_circ_x32chf_csp_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: dot_prod_line_x32chf_csp_asm
+// VRA layout:
+// {R0} - input buffer #0
+// {R1} - input buffer #1
+// {R0} - 16 complex single-precision dot product samples added for final result
+// ABI:
+//  a0 - 1st input pointer (DMEM aligned)
+//  a1 - 2nd input pointer (DMEM aligned)
+//  a2 - output pointer for dot product complex value (no DMEM alignment)
+//  g0 - number of input lines
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _dot_prod_line_x32chf_csp_asm
+    .type _dot_prod_line_x32chf_csp_asm, @function
+    .size _dot_prod_line_x32chf_csp_asm, _dot_prod_line_x32chf_csp_asm_end -_dot_prod_line_x32chf_csp_asm
+_dot_prod_line_x32chf_csp_asm:
+    
+    ld.laddr [a0]+1;                                                       setB.loop g0, 3; 
+    ld.laddr [a1]+1;                                                       clr.VRA;
+                                                                           set.VRAincr rS0,HVR; setB.VRAptr rS1,1*VR;
+    ld.laddr [a0]+1;    ld.normal R0;                                      set.VRAincr rS1,HVR; 
+    ld.laddr [a1]+1;    ld.normal R1;                                      set.prec half_fixed, half_fixed, half_fixed, single, single;  
+                                          rd S0; rd S1; rd S2;             set.Smode S0conj, S0hlinecplx, S1hlinecplx, S2zeros;                   
+    ld.laddr [a0]+1;    ld.normal R0;     rd S0; rd S1;           clr.au;  setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.normal R1;                             cmac;    setB.VRAptr rS1,1*VR;    loop_begin;
+                                          rd S0; rd S1;           cmac;
+    ld.laddr [a0]+1;    ld.normal R0;     rd S0; rd S1;                    setB.VRAptr rS0,0*VR;    loop_end;
+                                                                           setB.VRAptr rS0,4; set.VRAincr rS0,4;
+                                                                           set.loop LPC,1;
+                                          wr.hlinecplx;                    set.prec single, single, single, single, single;                                                                                                               
+                                          rd S0; rd S1;                    set.Smode S0word, S1cplx1, S2zeros;     
+                                          rd S0;                        
+                                          rd S0;                  cmac;    loop_begin;  loop_end;
+                                                                           fnop; 
+                                                                           fnop; 
+                                                                           fnop;
+                                          wr.hlinecplx;                    setA.VRAptr rS0,0;
+                                          mv.w g1,[rS0];                   setA.VRAptr rS0,2;
+    rts;                                  mv.w g2,[rS0];
+    st [a2]+(2)*UPHW, g1;
+    st [a2]+0, g2;    
+    
+_dot_prod_line_x32chf_csp_asm_end:

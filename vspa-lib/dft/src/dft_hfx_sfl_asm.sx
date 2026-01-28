@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2018 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           dft_hfx_sfl_asm.sx
+//! @brief          DFT ASSEMBLY source file
+//! @author         NXP Semiconductors.
+// =============================================================================
+#include "vspa.h"
+
+#define VR     (__AU_COUNT__*4)       // Number of halfwords for one VRA register
+#define HVR    (__AU_COUNT__*2)       // Number of halfwords for half of VRA register
+
+// -----------------------------------------------------------------------------
+// Subroutine name: dft_hfx_sfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _dft_hfx_sfl_asm
+    .type _dft_hfx_sfl_asm, @function
+    .size _dft_hfx_sfl_asm, _dft_hfx_sfl_asm_end -_dft_hfx_sfl_asm
+_dft_hfx_sfl_asm:
+
+    // ABI:
+    //  a0 - input pointer (complex half-precision)
+	//  a1 - output pointer 	
+    //  g0 - N_DFT    value (uint32) (sequence length)
+    //
+    // Register usage:
+    // -----------------------------------------------------------------------------------------------------------
+    // Compute g1 = nco_freq = floor(2^31 / N_DFT)
+	// Compute g3 = ceil(N_DFT/16)
+	// a3 and a2 - for load from output memory
+	// a4 		 - for store in output memory
+    // -----------------------------------------------------------------------------------------------------------
+	
+	
+	
+																					 												
+	mv g1,0x80000000;                                                															   	    	    // g1 = 2^31                             (opC, 1 cycles) 
+	sr g2,g0,1;																													   	    	    // g2 = floor(N_ZC / 2)		     	     (opS, 1 cycles)
+	add g1,g1,g2;                                                    															   	    	    // g1 = 2^30 + floor(N_ZC / 2)           (opS, 1 cycles)	
+	div g1,g1,g0;                                                    															   	    	    // g1 = div(2^31 + floor(N_ZC / 2), N_ZC)(opS, 7 cycles)				 
+	ld [a0]+2*UPHW;																	  	clr.VRA;												// load [x(0)...x(31)]																						
+																						mv g2,5;
+	add g3,g0,15;  					   																					   	    	   		    // g3 = N_DFT + 16 - 1
+	sr g3,g3,4;			ld.h2l R6;																												// g3 = (N_DFT + 16 - 1) / 16 																									
+																						set.nco normal,0,0;    									// Initialize NCO						 (opD, 2 cycles)
+																						mv g6,0;																								
+	setA.VRAptr rS0,6*VR;																mv nco_freq,g1;	
+																						mv nco_phase,g6;
+																						set.prec half_fixed, single, single, single, single;   																			    
+													rd S2;								set.Smode S0word, S1nco, S2zeros; 																																									
+	ld [a0]+2*UPHW;																			
+	subS g3,g3,g2;					rd S0; rd S1; 														 																																																													
+																						setB.loop g3,2;							
+						ld.h2l R6;			rd S1;			cmad;						
+	sub g0,g0,1;																																		
+											rd S1;			cmad;						set.Smode S2hlinecplx;
+	setA.VRAptr rV,4*VR; 																mv a2,a1;
+	setA.VRAptr rSt,4;						rd S1;			cmad; 	wr.hlinecplx;		mv a4,a1;												
+	st.laddr [a4]+1;									  		    									loop_begin;
+											rd S1;			cmad; 	wr.hlinecplx;						loop_end; 								
+	st.laddr [a4]+1;									  		    					setB.loop g0,/*15*/16;				
+	ld.laddr [a2]+1;						rd S1;			cmad;   wr.hlinecplx;		add nco_k,2;
+	st.laddr [a4]+1;																	mv nco_freq,g1;
+	ld [a0]+2*UPHW;							rd S1;			cmad;   wr.hlinecplx;								loop_begin;
+	ld.laddr [a2]+1;	ld.normal R0;													 								
+	st.laddr [a4]+1;			   rd S0;  rd S1; rd S2;	cmad;   wr.hlinecplx;									
+	ld.laddr [a2]+1;	ld.h2l R6;						 		 									                                   
+	st.laddr [a4]+1;	ld.normal R0; 		 				 cmad;  wr.hlinecplx;	   	/*mv a3,a2;*/									
+																						mv a3,a2; /* workaround compiler error "st.laddr [a4]+1" and "mv a3,a2" are not allowed to be in the same packet"*/
+	ld.laddr [a3]+1;					   rd S1;	rd S2;   							
+	st.laddr [a4]+1;	ld.normal R0;						 		wr.hlinecplx;		setB.loop g3,2;	                                                                 										 
+	ld.laddr [a3]+1;					   rd S1;	rd S2;	 cmad;						mv a2,a1;
+	st.laddr [a4]+1;	ld.normal R0;				 		   		 wr.hlinecplx;									
+	ld.laddr [a3]+1;					   rd S1;	rd S2;   cmad;			 			mv a4,a1;		
+	 st.laddr [a4]+1;	ld.normal R0;					  	 		    				
+	ld.laddr [a3]+1;					   rd S1;	rd S2;   cmad;	 wr.hlinecplx;				loop_begin;
+	 st.laddr [a4]+1;	ld.normal R0;					  	 		    						loop_end;	 
+	 ld.laddr [a2]+1;					   rd S1;	rd S2;	 cmad;   wr.hlinecplx;  	add nco_k,2;
+     st.laddr [a4]+1;	ld.normal R0;					  		     					mv nco_freq,g1; 			loop_end;							
+							    		   rd S1;	rd S2;	 cmad;   wr.hlinecplx;										
+	 st.laddr [a4]+1;   								 					
+															 cmad;   wr.hlinecplx;									
+	 st.laddr [a4]+1;	 																						
+									 								 wr.hlinecplx;	   					
+	 st.laddr [a4]+1;	 														
+																     wr.hlinecplx;		 
+	 st.laddr [a4]+1;	 																							
+	rts;
+	nop;
+	nop;
+	
+	
+
+	
+_dft_hfx_sfl_asm_end:
+

@@ -1,0 +1,479 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           matrix_bmult_interp4_asm.sx
+//! @brief          Batch multiplication with interpolation ASSEMBLY source file
+//! @author         NXP Semiconductors.
+// =============================================================================
+#include "vspa.h"
+
+#define  VR (__AU_COUNT__*4)       // Number of half words for one full VRA register (full DMEM line)
+#define HVR (__AU_COUNT__*2)       // Number of half words for one half VRA register (half DMEM line)
+#define QVR (__AU_COUNT__*1)       // Number of half words for one quarter VRA register (quarter DMEM line)
+    
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm
+    .type _mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm, @function
+    .size _mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm, _mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm_end -_mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm
+_mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm:
+    
+    // {R0,R1} - Read 4 IN0 lines 
+    // {R2,R3} - Read 2 W(IN0,OUT0) lines
+    // {R4,R5} - Store MAD in SINGLE Precion (INTERMEDIATE OUT0(LINE0,LINE1,LINE2,LINE3) result)
+    // ........ loop: IN1, IN2, ...
+    // {R0,R1} - Read 4 IN_last lines
+    // {R2,R3} - Read 2 W(IN_last,OUT0) lines
+    // {R4,R5,R6,R7} - Store MAD in HALF Precision (FINAL OUT0(LINE0,LINE1,LINE2,LINE3) result)
+    
+    // Store OUT0(LINE0,LINE1,LINE2,LINE3) and prepare computing OUT0(LINE4,LINE5,LINE6,LINE7)
+    
+    // Pointer offsets: 
+    // a3       save a0 pointer
+    // def:     gv   = (256 - 3 * 32) * 2;                                           // vec offset between IN0(LINE3) and IN1(LINE0)
+    // g2:      gvr1 = (256 * (dim2 - 1) - 32) * 2 = 512 * dim2 - (512+64);          // vec return offset between INlast(LINE3) and IN0(LINE4) - this should be replaced with mvB a0,a0_init+4*64;    
+    // g3:      gm   = (64 * dim3 - 16) * 4 = 256 * dim3 - 64;                       // mat offset between W(IN0,OUT0,LINE3) and W(IN1,OUT0,LINE0)
+    // g4:      gmr1 = (64 * dim3 * (dim2 - 1) - 16) * 4;                            // mat return offset between W(INlast,OUT0,LINE3) and W(IN0,OUT0,LINE4)
+    //          gmr2 = (64 * dim3 * (dim2 - 1) - 16) * 4 = gmr1;                     // mat return offset between W(INlast,OUT0,LINE7) and W(IN0,OUT1,LINE0)
+    
+    // Loop: 
+    // g0 = dim2 - 2;                                  // vec inner loop count
+    // g1 = dim3;                                      // out outer loop count
+    
+    #define gv  (256 - 3 * 32) * 2
+    
+    clr.VRA;
+    mvB a3,a0;               setA.VRAincr rS0,HVR;     // a3 =  backup for initial a0 pointer
+    sub g4,g0,1;                                       // g4 = dim2 - 1; 
+    sl g3,g1,8;                                        // g3 = 256 * dim3
+    mpy g4,g4,g3;                                      // g4 = 256 * dim3 * (dim2 - 1) = g3 * g4 (4 cycles delay)
+    sub g3,g3,16*4;                                    // g3 = 256 * dim3 - 64 = g3 - 64
+    sl g2,g0,9;                                        // g2 = dim2 * 512;
+    sub g2,g2,512+64;                                  // g2 = dim2 * 512 - (512+64);
+    sub g0,g0,2;                                       // g0 = dim2 - 2 (inner loop count)
+    sub g4,g4,16*4;                                    // g4 = 256 * dim3 * (dim2 - 1) - 16 * 4
+
+    setB.VRAptr rV,4*VR;
+    
+    mv g5,((5*VR)*0x10000+4*VR);                       // Wrap & start for {R4,R5} with VR increment (rV and rS2)
+    mv g6,((7*VR + HVR)*0x10000+4*VR);                 // Wrap & start for {R4,R5,R6,R7} with HVR increment (rV)
+    
+    ld  [a1]+(64)*UPHW;                                                                    setB.VRAptr   rS1,2*VR;
+    ld  [a0]+(64)*UPHW;                                                                    setB.VRAincr  rS1,QVR;
+    ld  [a0]+(64)*UPHW;                                                                    setB.creg 24, 2;                                // Set order_i = 2 for n = 4 (S1interp2nc)
+    ld  [a1]+g3;        ld.normal R2;                                                                                setB.loop g0,8;
+    ld  [a0]+(64)*UPHW; ld.normal R0;                                                      set.prec half,single,single,single,single;
+    ld  [a0]+(gv)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1interp2nc, S2zeros;
+                        ld.normal R3;    rd S0; rd S1; rd S2;                              set.VRArange1 rS0,0*VR,1*VR+HVR;                           
+                        ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     set.VRArange1 rS1,2*VR,3*VR+3*QVR; loop_begin;  // 1st wr is dummy
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr  rS2,VR;                           // 1st wr is dummy, S2incr strategically placed so that rS2=4*VR for 1st useful S2 read
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                     // 1st wr is dummy
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr  rV,VR;                            // 1st wr is dummy
+    ld  [a1]+g3;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                            // V = IN0(LINE0) * W(IN0,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rS2,g5;                           // V = IN0(LINE0) * W(IN0,OUT0) => R5
+    ld  [a0]+(gv)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                          // V = IN0(LINE1) * W(IN0,OUT0) => R4           
+                        ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                              loop_end;             // V = IN0(LINE1) * W(IN0,OUT0) => R5           
+                        ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                              set.loop g1,LS1,LE1;  // V = IN0(LINE2) * W(IN0,OUT0) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN0(LINE2) * W(IN0,OUT0) => R5           
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN0(LINE3) * W(IN0,OUT0) => R4
+LS1:ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                              loop_begin;           // V = IN0(LINE3) * W(IN0,OUT0) => R5           
+    ld  [a1]-g4;        ld.normal R2;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                   // V = IN1(LINE0) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     set.prec half,single,single,single,half;      // V = IN1(LINE0) * W(IN1,OUT0) => R5                 
+    ld  [a0]-g2;        ld.normal R1;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;                                                   // V = IN1(LINE1) * W(IN1,OUT0) => R4           
+                        ld.normal R3;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;                               sub g1,1;           // V = IN1(LINE1) * W(IN1,OUT0) => R5           
+                        ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                               cmp g1,0;           // V = IN1(LINE2) * W(IN1,OUT0) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN1(LINE2) * W(IN1,OUT0) => R5           
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     set.VRAptr rSt,4;                             // V = IN1(LINE3) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr rV,HVR;                          // V = IN1(LINE3) * W(IN1,OUT0) => R5           
+    ld  [a1]+g3;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g6;                            // V = OUT0(LINE0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half,single,single,single,single;      // V = OUT0(LINE0) => R4                       
+    ld  [a0]+(gv)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2zeros;                              // V = OUT0(LINE1) => R5                       
+  st [a2]+(64)*UPHW;    ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.VRAptr rSt,5;                               // V = OUT0(LINE1) => R5  
+  st [a2]+(64)*UPHW;    ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             setB.loop g0,8;        // V = OUT0(LINE2) => R6
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             mvB a4,a2;             // V = OUT0(LINE2) => R6
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    set.VRAptr rSt,6;        loop_begin;            // V = OUT0(LINE3) => R7  
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    setB.VRAincr rV,VR;                             // V = OUT0(LINE3) => R7                       
+    ld  [a1]+g3;        ld.normal R2;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     mvB.VRArange1 rV,g5;                          // V = IN0(LINE4) * W(IN0,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                              mvB a2,a4;           // V = IN0(LINE4) * W(IN0,OUT0) => R5 
+    ld  [a0]+(gv)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.Smode S2hlinecplx;                        // V = IN0(LINE5) * W(IN0,OUT0) => R4           
+  st [a2]+(64)*UPHW;    ld.normal R3;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.VRAptr rSt,7;                             // V = IN0(LINE5) * W(IN0,OUT0) => R5
+  st [a2]+(64)*UPHW;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN0(LINE6) * W(IN0,OUT0) => R4   
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                              loop_end;            // V = IN0(LINE6) * W(IN0,OUT0) => R5   
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN0(LINE7) * W(IN0,OUT0) => R4   
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN0(LINE7) * W(IN0,OUT0) => R5                           
+    ld  [a1]-g4;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                    // V = IN1(LINE4) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half,single,single,single,half;        // V = IN1(LINE4) * W(IN1,OUT0) => R5          
+    ld  [a0]+0;         ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    mvB a0,a3;                                      // V = IN1(LINE5) * W(IN1,OUT0) => R4
+                        ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                             mv g7,1;               // V = IN1(LINE5) * W(IN1,OUT0) => R5
+                        ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             mv.eq g0,g7;           // V = IN1(LINE6) * W(IN1,OUT0) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN1(LINE6) * W(IN1,OUT0) => R5
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    set.VRAptr rSt,4;                               // V = IN1(LINE7) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    setB.VRAincr rV,HVR;                            // V = IN1(LINE7) * W(IN1,OUT0) => R5          
+    ld  [a1]+g3;        ld.normal R2;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     mvB.VRArange1 rV,g6;                          // V = OUT0(LINE4) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     set.prec half,single,single,single,single;    // V = OUT0(LINE4) => R4
+    ld  [a0]+(gv)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.Smode S2zeros;                            // V = OUT0(LINE5) => R5                                    
+  st [a2]+(64)*UPHW;    ld.normal R3;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.VRAptr rSt,5;                             // V = OUT0(LINE5) => R5
+  st [a2]+(64)*UPHW;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                              setB.loop g0,8;      // V = OUT0(LINE6) => R6
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                              mvB a4,a2;           // V = OUT0(LINE6) => R6
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     set.VRAptr rSt,6;        loop_begin;          // V = OUT0(LINE7) => R7
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr rV,VR;                           // V = OUT0(LINE7) => R7
+    ld  [a1]+g3;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                            // V = IN0(LINE0) * W(IN0,OUT1) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                             mvB a2,a4;             // V = IN0(LINE0) * W(IN0,OUT1) => R5
+    ld  [a0]+(gv)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                          // V = IN0(LINE1) * W(IN0,OUT1) => R4
+  st [a2]+(64)*UPHW;    ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.VRAptr rSt,7;                               // V = IN0(LINE1) * W(IN0,OUT1) => R5
+  st [a2]+(64)*UPHW;    ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN0(LINE2) * W(IN0,OUT1) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             loop_end;              // V = IN0(LINE2) * W(IN0,OUT1) => R5
+LE1:ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             loop_end;              // V = IN0(LINE3) * W(IN0,OUT1) => R4
+
+    rts;
+    nop;
+    nop;
+    
+_mat_bmult_i4_256xd2xd3_chfl_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm
+    .type _mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm, @function
+    .size _mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm, _mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm_end -_mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm
+_mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm:
+    
+    // {R0,R1} - Read 4 IN0 lines 
+    // {R2,R3} - Read 2 W(IN0,OUT0) lines
+    // {R4,R5} - Store MAD in SINGLE Precion (INTERMEDIATE OUT0(LINE0,LINE1,LINE2,LINE3) result)
+    // ........ loop: IN1, IN2, ...
+    // {R0,R1} - Read 4 IN_last lines
+    // {R2,R3} - Read 2 W(IN_last,OUT0) lines
+    // {R4,R5,R6,R7} - Store MAD in HALF Precision (FINAL OUT0(LINE0,LINE1,LINE2,LINE3) result)
+    
+    // Store OUT0(LINE0,LINE1,LINE2,LINE3) and prepare computing OUT0(LINE4,LINE5,LINE6,LINE7)
+    
+    // Pointer offsets: 
+    // a3       save a0 pointer
+    // def:     gv   = (256 - 3 * 32) * 2;                                           // vec offset between IN0(LINE3) and IN1(LINE0)
+    // g2:      gvr1 = (256 * (dim2 - 1) - 32) * 2 = 512 * dim2 - (512+64);          // vec return offset between INlast(LINE3) and IN0(LINE4) - this should be replaced with mvB a0,a0_init+4*64;    
+    // g3:      gm   = (64 * dim3 - 16) * 4 = 256 * dim3 - 64;                       // mat offset between W(IN0,OUT0,LINE3) and W(IN1,OUT0,LINE0)
+    // g4:      gmr1 = (64 * dim3 * (dim2 - 1) - 16) * 4;                            // mat return offset between W(INlast,OUT0,LINE3) and W(IN0,OUT0,LINE4)
+    //          gmr2 = (64 * dim3 * (dim2 - 1) - 16) * 4 = gmr1;                     // mat return offset between W(INlast,OUT0,LINE7) and W(IN0,OUT1,LINE0)
+    
+    // Loop: 
+    // g0 = dim2 - 2;                                  // vec inner loop count
+    // g1 = dim3;                                      // out outer loop count
+    
+    #define gv  (256 - 3 * 32) * 2
+    
+    clr.VRA;
+    mvB a3,a0;               setA.VRAincr rS0,HVR;     // a3 =  backup for initial a0 pointer
+    sub g4,g0,1;                                       // g4 = dim2 - 1; 
+    sl g3,g1,8;                                        // g3 = 256 * dim3
+    mpy g4,g4,g3;                                      // g4 = 256 * dim3 * (dim2 - 1) = g3 * g4 (4 cycles delay)
+    sub g3,g3,16*4;                                    // g3 = 256 * dim3 - 64 = g3 - 64
+    sl g2,g0,9;                                        // g2 = dim2 * 512;
+    sub g2,g2,512+64;                                  // g2 = dim2 * 512 - (512+64);
+    sub g0,g0,2;                                       // g0 = dim2 - 2 (inner loop count)
+    sub g4,g4,16*4;                                    // g4 = 256 * dim3 * (dim2 - 1) - 16 * 4
+
+    setB.VRAptr rV,4*VR;
+    
+    mv g5,((5*VR)*0x10000+4*VR);                       // Wrap & start for {R4,R5} with VR increment (rV and rS2)
+    mv g6,((7*VR + HVR)*0x10000+4*VR);                 // Wrap & start for {R4,R5,R6,R7} with HVR increment (rV)
+    
+    ld  [a1]+(64)*UPHW;                                                                    setB.VRAptr   rS1,2*VR;
+    ld  [a0]+(64)*UPHW;                                                                    setB.VRAincr  rS1,QVR;
+    ld  [a0]+(64)*UPHW;                                                                    setB.creg 24, 2;                                // Set order_i = 2 for n = 4 (S1interp2nc)
+    ld  [a1]+g3;        ld.normal R2;                                                                                setB.loop g0,8;
+    ld  [a0]+(64)*UPHW; ld.normal R0;                                                      set.prec half_fixed,single,single,single,single;
+    ld  [a0]+(gv)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1interp2nc, S2zeros;
+                        ld.normal R3;    rd S0; rd S1; rd S2;                              set.VRArange1 rS0,0*VR,1*VR+HVR;                           
+                        ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     set.VRArange1 rS1,2*VR,3*VR+3*QVR; loop_begin;  // 1st wr is dummy
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr  rS2,VR;                           // 1st wr is dummy, S2incr strategically placed so that rS2=4*VR for 1st useful S2 read
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                     // 1st wr is dummy
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr  rV,VR;                            // 1st wr is dummy
+    ld  [a1]+g3;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                            // V = IN0(LINE0) * W(IN0,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rS2,g5;                           // V = IN0(LINE0) * W(IN0,OUT0) => R5
+    ld  [a0]+(gv)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                          // V = IN0(LINE1) * W(IN0,OUT0) => R4           
+                        ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                              loop_end;             // V = IN0(LINE1) * W(IN0,OUT0) => R5           
+                        ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                              set.loop g1,LS2,LE2;  // V = IN0(LINE2) * W(IN0,OUT0) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN0(LINE2) * W(IN0,OUT0) => R5           
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN0(LINE3) * W(IN0,OUT0) => R4
+LS2:ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                              loop_begin;           // V = IN0(LINE3) * W(IN0,OUT0) => R5           
+    ld  [a1]-g4;        ld.normal R2;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                   // V = IN1(LINE0) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     set.prec half_fixed,single,single,single,half;// V = IN1(LINE0) * W(IN1,OUT0) => R5                 
+    ld  [a0]-g2;        ld.normal R1;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;                                                   // V = IN1(LINE1) * W(IN1,OUT0) => R4           
+                        ld.normal R3;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;                               sub g1,1;           // V = IN1(LINE1) * W(IN1,OUT0) => R5           
+                        ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                               cmp g1,0;           // V = IN1(LINE2) * W(IN1,OUT0) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN1(LINE2) * W(IN1,OUT0) => R5           
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     set.VRAptr rSt,4;                             // V = IN1(LINE3) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr rV,HVR;                          // V = IN1(LINE3) * W(IN1,OUT0) => R5           
+    ld  [a1]+g3;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g6;                            // V = OUT0(LINE0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half_fixed,single,single,single,single;// V = OUT0(LINE0) => R4                       
+    ld  [a0]+(gv)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2zeros;                              // V = OUT0(LINE1) => R5                       
+  st [a2]+(64)*UPHW;    ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.VRAptr rSt,5;                               // V = OUT0(LINE1) => R5  
+  st [a2]+(64)*UPHW;    ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             setB.loop g0,8;        // V = OUT0(LINE2) => R6
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             mvB a4,a2;             // V = OUT0(LINE2) => R6
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    set.VRAptr rSt,6;        loop_begin;            // V = OUT0(LINE3) => R7  
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    setB.VRAincr rV,VR;                             // V = OUT0(LINE3) => R7                       
+    ld  [a1]+g3;        ld.normal R2;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     mvB.VRArange1 rV,g5;                          // V = IN0(LINE4) * W(IN0,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                              mvB a2,a4;           // V = IN0(LINE4) * W(IN0,OUT0) => R5 
+    ld  [a0]+(gv)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.Smode S2hlinecplx;                        // V = IN0(LINE5) * W(IN0,OUT0) => R4           
+  st [a2]+(64)*UPHW;    ld.normal R3;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.VRAptr rSt,7;                             // V = IN0(LINE5) * W(IN0,OUT0) => R5
+  st [a2]+(64)*UPHW;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN0(LINE6) * W(IN0,OUT0) => R4   
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                              loop_end;            // V = IN0(LINE6) * W(IN0,OUT0) => R5   
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN0(LINE7) * W(IN0,OUT0) => R4   
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                                                   // V = IN0(LINE7) * W(IN0,OUT0) => R5                           
+    ld  [a1]-g4;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                    // V = IN1(LINE4) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half_fixed,single,single,single,half;  // V = IN1(LINE4) * W(IN1,OUT0) => R5          
+    ld  [a0]+0;         ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    mvB a0,a3;                                      // V = IN1(LINE5) * W(IN1,OUT0) => R4
+                        ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                             mv g7,1;               // V = IN1(LINE5) * W(IN1,OUT0) => R5
+                        ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             mv.eq g0,g7;           // V = IN1(LINE6) * W(IN1,OUT0) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN1(LINE6) * W(IN1,OUT0) => R5
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    set.VRAptr rSt,4;                               // V = IN1(LINE7) * W(IN1,OUT0) => R4
+    ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;    setB.VRAincr rV,HVR;                            // V = IN1(LINE7) * W(IN1,OUT0) => R5          
+    ld  [a1]+g3;        ld.normal R2;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     mvB.VRArange1 rV,g6;                          // V = OUT0(LINE4) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;   rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;     set.prec half_fixed,single,single,single,single;// V = OUT0(LINE4) => R4
+    ld  [a0]+(gv)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.Smode S2zeros;                            // V = OUT0(LINE5) => R5                                    
+  st [a2]+(64)*UPHW;    ld.normal R3;    rd S0; rd S1; rd S2;   cmad;    wr.hlinecplx;     set.VRAptr rSt,5;                             // V = OUT0(LINE5) => R5
+  st [a2]+(64)*UPHW;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                              setB.loop g0,8;      // V = OUT0(LINE6) => R6
+    ld  [a1]+(64)*UPHW; ld.normal R1;    rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;                              mvB a4,a2;           // V = OUT0(LINE6) => R6
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     set.VRAptr rSt,6;        loop_begin;          // V = OUT0(LINE7) => R7
+    ld  [a0]+(64)*UPHW;                  rd S0; rd S1; rd S2;    cmad;   wr.hlinecplx;     setB.VRAincr rV,VR;                           // V = OUT0(LINE7) => R7
+    ld  [a1]+g3;        ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                            // V = IN0(LINE0) * W(IN0,OUT1) => R4
+    ld  [a0]+(64)*UPHW; ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                             mvB a2,a4;             // V = IN0(LINE0) * W(IN0,OUT1) => R5
+    ld  [a0]+(gv)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                          // V = IN0(LINE1) * W(IN0,OUT1) => R4
+  st [a2]+(64)*UPHW;    ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.VRAptr rSt,7;                               // V = IN0(LINE1) * W(IN0,OUT1) => R5
+  st [a2]+(64)*UPHW;    ld.normal R0;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                                                    // V = IN0(LINE2) * W(IN0,OUT1) => R4
+    ld  [a1]+(64)*UPHW; ld.normal R1;   rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             loop_end;              // V = IN0(LINE2) * W(IN0,OUT1) => R5
+LE2:ld  [a0]+(64)*UPHW;                 rd S0; rd S1; rd S2;    cmad;     wr.hlinecplx;                             loop_end;              // V = IN0(LINE3) * W(IN0,OUT1) => R4
+
+    rts;
+    nop;
+    nop;
+    
+_mat_bmult_i4_256xd2xd3_chfx_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm
+    .type _mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm, @function
+    .size _mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm, _mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm_end -_mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm
+_mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm:
+
+    // dim1 = 128 x k
+    // dim2 = 2
+    // dim3 >= 1
+    
+    sl g2,g0,1;                                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    mvB a3,g2;
+    mpy g3,g0,g1;                                   // g3 = dim1 * dim3
+    add a3,a3,a0;          clr.VRA;
+    set.range a0,a0,g2;                             // Set modulo addresing for a0 (1st input stream)
+    set.range a3,a3,g2;                             // Set modulo addresing for a3 (2nd input stream)
+    mvB a4,g3;             setA.VRAincr rS0,HVR;
+    add a4,a4,a1;          setB.VRAptr  rS1,2*VR;   // Pointer for second half of mat: a4 = a1 + dim1 * dim3
+    
+    set.VRArange1 rS0,0*VR,1*VR+HVR; 
+    
+    mv g5,((5*VR)*0x10000+4*VR);                    // Wrap & start for {R4,R5} with VR increment (rV and rS2)
+    mv g6,((7*VR+HVR)*0x10000+4*VR);                // Wrap & start for {R4,R5,R6,R7} with HVR increment (rV)
+    
+    ld.laddr [a1]+1;                                                                       setB.VRAincr rS1,QVR;
+    ld.laddr [a0]+1;                                                                       setB.VRAptr  rS2,4*VR;
+    ld.laddr [a0]+1;                                                                       setB.VRAincr rS2,VR;
+    ld.laddr [a1]+1;    ld.normal R2;                                                      setB.creg 24, 2;                                       // Set order_i = 2 for n = 4 (S1interp2nc)                         
+    ld.laddr [a0]+1;    ld.normal R0;                                                      set.prec half,single,single,single,single;
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1interp2nc, S2zeros;
+                        ld.normal R3;    rd S0; rd S1; rd S2;                              set.VRArange1 rS1,2*VR,3*VR+3*QVR;                          
+                        ld.normal R0;    rd S0; rd S1; rd S2;    cmad;                                                     sr g4,g3,7;            // Loop count: g4 = (dim1 * dim3) / 128
+    ld.laddr [a4]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;                     mvB.VRArange1 rS2,g5;                             
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;                     setB.VRAptr   rV,4*VR;
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;                     setB.VRAincr  rV,VR;                           
+    ld.laddr [a4]+1;    ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                                   
+    ld.laddr [a3]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half,single,single,single,half;                                                  
+    ld.laddr [a3]+1;    ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                                
+                        ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                    setB.loop g4,16;       
+                        ld.normal R0;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                                           
+    ld.laddr [a1]+1;    ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    setB.VRAincr rSt,1;             loop_begin;             
+    ld.laddr [a0]+1;                    rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.VRAptr rSt,4;                                      
+    ld.laddr [a0]+1;                    rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    setB.VRAincr rV,HVR;                                   
+    ld.laddr [a1]+1;    ld.normal R2;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g6;                                   
+    ld.laddr [a0]+1;    ld.normal R0;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.prec half,single,single,single,single;             
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.Smode S2zeros;                                                        
+    st.laddr [a2]+1;    ld.normal R3;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                             
+    st.laddr [a2]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                           
+    ld.laddr [a4]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                                              
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                                   
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    setB.VRAincr rV,VR;                                                     
+    ld.laddr [a4]+1;    ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                                   
+    ld.laddr [a3]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half,single,single,single,half;                               
+    ld.laddr [a3]+1;    ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                                                
+    st.laddr [a2]+1;    ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                                           
+    st.laddr [a2]+1;    ld.normal R0;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                    loop_end;                                                                                                 
+    
+    mv a0,0;      rts;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+    set.range a3,a0,0;              // Reset modulo addressing for a3  
+
+_mat_bmult_i4_d1x2xd3_chfl_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm
+    .type _mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm, @function
+    .size _mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm, _mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm_end -_mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm
+_mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm:
+
+    // dim1 = 128 x k
+    // dim2 = 2
+    // dim3 >= 1
+    
+    sl g2,g0,1;                                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    mvB a3,g2;
+    mpy g3,g0,g1;                                   // g3 = dim1 * dim3
+    add a3,a3,a0;          clr.VRA;
+    set.range a0,a0,g2;                             // Set modulo addresing for a0 (1st input stream)
+    set.range a3,a3,g2;                             // Set modulo addresing for a3 (2nd input stream)
+    mvB a4,g3;             setA.VRAincr rS0,HVR;
+    add a4,a4,a1;          setB.VRAptr  rS1,2*VR;   // Pointer for second half of mat: a4 = a1 + dim1 * dim3
+    
+    set.VRArange1 rS0,0*VR,1*VR+HVR; 
+    
+    mv g5,((5*VR)*0x10000+4*VR);                    // Wrap & start for {R4,R5} with VR increment (rV and rS2)
+    mv g6,((7*VR+HVR)*0x10000+4*VR);                // Wrap & start for {R4,R5,R6,R7} with HVR increment (rV)
+    
+    ld.laddr [a1]+1;                                                                       setB.VRAincr rS1,QVR;
+    ld.laddr [a0]+1;                                                                       setB.VRAptr  rS2,4*VR;
+    ld.laddr [a0]+1;                                                                       setB.VRAincr rS2,VR;
+    ld.laddr [a1]+1;    ld.normal R2;                                                      setB.creg 24, 2;                                       // Set order_i = 2 for n = 4 (S1interp2nc)                         
+    ld.laddr [a0]+1;    ld.normal R0;                                                      set.prec half_fixed,single,single,single,single;
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1interp2nc, S2zeros;
+                        ld.normal R3;    rd S0; rd S1; rd S2;                              set.VRArange1 rS1,2*VR,3*VR+3*QVR;                          
+                        ld.normal R0;    rd S0; rd S1; rd S2;    cmad;                                                     sr g4,g3,7;            // Loop count: g4 = (dim1 * dim3) / 128
+    ld.laddr [a4]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;                     mvB.VRArange1 rS2,g5;                             
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;                     setB.VRAptr   rV,4*VR;
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;                     setB.VRAincr  rV,VR;                           
+    ld.laddr [a4]+1;    ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                                   
+    ld.laddr [a3]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half_fixed,single,single,single,half;                                                  
+    ld.laddr [a3]+1;    ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                                
+                        ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                    setB.loop g4,16;       
+                        ld.normal R0;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                                           
+    ld.laddr [a1]+1;    ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    setB.VRAincr rSt,1;             loop_begin;             
+    ld.laddr [a0]+1;                    rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.VRAptr rSt,4;                                      
+    ld.laddr [a0]+1;                    rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    setB.VRAincr rV,HVR;                                   
+    ld.laddr [a1]+1;    ld.normal R2;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g6;                                   
+    ld.laddr [a0]+1;    ld.normal R0;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.prec half_fixed,single,single,single,single;             
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.Smode S2zeros;                                                        
+    st.laddr [a2]+1;    ld.normal R3;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                             
+    st.laddr [a2]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                           
+    ld.laddr [a4]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                                              
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                                   
+    ld.laddr [a3]+1;                     rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    setB.VRAincr rV,VR;                                                     
+    ld.laddr [a4]+1;    ld.normal R2;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    mvB.VRArange1 rV,g5;                                   
+    ld.laddr [a3]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;    set.prec half_fixed,single,single,single,half;                               
+    ld.laddr [a3]+1;    ld.normal R1;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;    set.Smode S2hlinecplx;                                                
+    st.laddr [a2]+1;    ld.normal R3;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                                           
+    st.laddr [a2]+1;    ld.normal R0;   rd S0; rd S1; rd S2;     cmad;    wr.hlinecplx;                                    loop_end;                                                                                                 
+    
+    mv a0,0;      rts;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+    set.range a3,a0,0;              // Reset modulo addressing for a3  
+
+_mat_bmult_i4_d1x2xd3_chfx_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm
+    .type _mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm, @function
+    .size _mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm, _mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm_end -_mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm
+_mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm:
+
+    // dim1 = 128 x k
+    // dim2 = 1
+    // dim3 >= 1
+    
+    clr.VRA;
+    mpy g3,g0,g1;                   // g3 = dim1 * dim3
+    sl g2,g0,1;                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    set.range a0,a0,g2;             // Set modulo addresing for a0 (1st input stream) 
+  
+    ld.laddr [a1]+1;                                                                       setB.VRAincr rS0,HVR;
+    ld.laddr [a0]+1;                                                                       setB.VRAptr  rS1,2*VR;
+    ld.laddr [a0]+1;                                                                       setB.VRAincr rS1,QVR;
+    ld.laddr [a1]+1;    ld.normal R2;                                                      setB.creg 24, 2;                                // Set order_i = 2 for n = 4 (S1interp2nc)                         
+    ld.laddr [a0]+1;    ld.normal R0;                                                      set.prec half,single,single,single,half;
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1interp2nc, S2zeros;
+                        ld.normal R3;    rd S0; rd S1;                                                                  sr g3,g3,7;        // Loop count: g3 = dim1 * dim3 / 128 
+                        ld.normal R0;    rd S0; rd S1;           cmad;                                                  setB.loop g3,10;
+                        ld.normal R1;    rd S0; rd S1;           cmad;                     setB.VRAptr rS0,0*VR;                             
+                                         rd S0; rd S1;           cmad;                     setB.VRAincr rV,HVR;
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;                     setB.VRAptr  rV,4*VR;        loop_begin;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;                                                          
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;                                                                                                                                                // V = OUT0(LINE0) => R4 
+    ld.laddr [a1]+1;    ld.normal R2;                            cmad;    wr.hlinecplx;    setB.VRAptr rS1,2*VR;                                                        
+    ld.laddr [a0]+1;    ld.normal R0;                            cmad;    wr.hlinecplx;    setB.VRAincr rSt,1;                                         
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;                                                       
+    st.laddr [a2]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                            
+    st.laddr [a2]+1;    ld.normal R0;    rd S0; rd S1;           cmad;    wr.hlinecplx;                                                                      
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;                                                     
+    st.laddr [a2]+1;                     rd S0; rd S1;           cmad;                                                   loop_end;                                                                                                    
+
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;              // Reset modulo addressing for a0   
+
+_mat_bmult_i4_d1x1xd3_chfl_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm
+    .type _mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm, @function
+    .size _mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm, _mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm_end -_mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm
+_mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm:
+
+    // dim1 = 128 x k
+    // dim2 = 1
+    // dim3 >= 1
+    
+    clr.VRA;
+    mpy g3,g0,g1;                   // g3 = dim1 * dim3
+    sl g2,g0,1;                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    set.range a0,a0,g2;             // Set modulo addresing for a0 (1st input stream) 
+  
+    ld.laddr [a1]+1;                                                                       setB.VRAincr rS0,HVR;
+    ld.laddr [a0]+1;                                                                       setB.VRAptr  rS1,2*VR;
+    ld.laddr [a0]+1;                                                                       setB.VRAincr rS1,QVR;
+    ld.laddr [a1]+1;    ld.normal R2;                                                      setB.creg 24, 2;                                // Set order_i = 2 for n = 4 (S1interp2nc)                         
+    ld.laddr [a0]+1;    ld.normal R0;                                                      set.prec half_fixed,single,single,single,half;
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1interp2nc, S2zeros;
+                        ld.normal R3;    rd S0; rd S1;                                                                  sr g3,g3,7;        // Loop count: g3 = dim1 * dim3 / 128 
+                        ld.normal R0;    rd S0; rd S1;           cmad;                                                  setB.loop g3,10;
+                        ld.normal R1;    rd S0; rd S1;           cmad;                     setB.VRAptr rS0,0*VR;                             
+                                         rd S0; rd S1;           cmad;                     setB.VRAincr rV,HVR;
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;                     setB.VRAptr  rV,4*VR;        loop_begin;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;                                                          
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;                                                                                                                                                // V = OUT0(LINE0) => R4 
+    ld.laddr [a1]+1;    ld.normal R2;                            cmad;    wr.hlinecplx;    setB.VRAptr rS1,2*VR;                                                        
+    ld.laddr [a0]+1;    ld.normal R0;                            cmad;    wr.hlinecplx;    setB.VRAincr rSt,1;                                         
+    ld.laddr [a0]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;                                                       
+    st.laddr [a2]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                            
+    st.laddr [a2]+1;    ld.normal R0;    rd S0; rd S1;           cmad;    wr.hlinecplx;                                                                      
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;                                                     
+    st.laddr [a2]+1;                     rd S0; rd S1;           cmad;                                                   loop_end;                                                                                                    
+
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;              // Reset modulo addressing for a0   
+
+_mat_bmult_i4_d1x1xd3_chfx_csp_chfl_asm_end:

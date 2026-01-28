@@ -1,0 +1,191 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2025  NXP
+
+
+
+/*
+Implementation details
+	Each block, unsigned short in[24][64], is compressed into unsigned short out[18][64]
+	Each 24 lines is compressed into 18 lines.
+
+	STEP1-3 convert all input data from half_fixed to 2's complement, each time 6 lines, repeating 4 times:
+	STEP1: Get sign of input words, A[i][j]=sign(in[i][j]),  A=0 for negative words, A=1 for non-negative words.
+	STEP2: Update sign, B[i][j]=A[i][j]-1, B=-1 for negative words, B=0 for non-negative words.
+	STEP3: Get 2's complement words, C[i][j]=|in[i][j]|+B[i][j]
+	STEP4: Right shift first 18 lines by 4 bit. D[i][j]=C[i][j] * 2^(-4)
+	STEP5: Get sign of 2's complement words of line 18-23, E[i][j]=sign(C[i][j]), i=18 to 23, E=1 for negative words, E=0 for non-negative words.
+	STEP6: update sign, F[i][j]=E[i][j] * 2^(-4)
+	STEP7: Right shift 4 bits and put sign bit into bit 12, G[i][j]=|F[i][j]| * 2^(-4) + F[i][j]. This step makes 0xABCD to 0x0ABC.
+	STEP8: Right shift 4 bits, H[i][j]=G[i][j] * 2^(-4). This step make 0x0ABC >> 4 = 0x00AB
+	STEP9: Get bit7-4, I[i][j]=G[i][j] - H[i][j] * 2^4. This step makes 0x0ABC - (0x00AB<<4) = 0x000C
+	STEP10: Put bit7-4 of line 18-23 to bit3-0 of line 0,3,6,9,12,15,  out[m][j]=D[m][j] * 2^4 + I[i][j], m=0,3,6,9,12,15, i=18-23
+	STEP11: Right shift 4 bits, J[i][j]=H[i][j] * 2^(-4). This step make 0x00AB >> 4 = 0x000A
+	STEP12: Get bit11-8, K[i][j]=H[i][j] - J[i][j] * 2^4. This step makes 0x00AB - (0x000A<<4) = 0x000B
+	STEP13: Put bit11-8 of line 18-23 to bit3-0 of line 1,4,7,10,13,16,  out[m][j]=D[m][j] * 2^4 + K[i][j], m=1,4,7,10,13,16, i=18-23
+	STEP14: Put bit15-12 of line 18-23 to bit3-0 of line 2,5,8,111,14,17,  out[m][j]=D[m][j] * 2^4 + J[i][j], m=2,5,8,111,14,17, i=18-23
+	
+	Some constants are define at _factor_comp16_12b and loaded into R0 or R7 in need for right or left shift.
+*/
+
+
+
+
+// a0:output buffer, line aligned
+// a1:input buffer, line aligned
+// g0:num of input lines
+
+    .global   _factor_comp16_12b
+    .section    .data
+	
+	.align 32
+_factor_comp16_12b:
+    .word       0x80008000 //minus 0
+    .word       0x08000800 //2^(-4)
+    .word       0xcc00cc00 //-2^4
+    .word       0x4c004c00 //2^4
+
+	.section    .text
+    .global _comp16_12b
+    .type _comp16_12b, @function
+	
+_comp16_12b:
+	
+	set.loop g0,LB,LE;
+	mv a2,_factor_comp16_12b																								
+LB:	ld [a2]+0;																								clr.VRA;	loop_begin;
+	ld.laddr [a1]+1;																	
+	ld.laddr [a1]+1;																						set.VRAincr rS0, 1*64;
+	ld.laddr [a1]+1;	ld.h2l 		R0;																		set.VRAptr rS0, 2*64;	
+	ld.laddr [a1]+1;	ld.normal	R2;																		set.prec half_fixed,half_fixed,half_fixed,single,half;
+	ld.laddr [a1]+1;    ld.normal	R3;	rd S0;rd S1;rd S2;													set.smode S0straight,S1real1,S2zeros;
+	ld.laddr [a1]+1;    ld.normal	R4; rd S0;																set.VRAptr rst, 1;
+	                    ld.normal	R5; rd S0;				rmad;											set.creg 3,2         //output sign binary
+	                    ld.normal	R6; rd S0;				rmad;											set.creg 24,6;  //order i = 64, interpolate 1 to 64
+	                    ld.normal	R7; rd S0;				rmad;											set.loop 3,28;
+	                                    rd S0;				rmad;											set.VRAptr rS2, 1*64;	set.VRAptr rV, 1*64;
+	                                                        rmad;	wr.straight;/*1*/	/*STEP1*/			set.prec half_fixed,half_fixed,half,single,half; loop_begin; //write sign binary, negative 0, positive 1
+	                                    rd S0;rd S1;rd S2;	rmad;   wr.straight;/*1*/						set.smode S0chs,S0real1,S1real1,S2straight;
+	                                    rd S2;				        wr.straight;/*1*/						set.VRAptr rS0, 2*64;
+	                                    rd S2;				rmad;   wr.straight;/*1*/					
+	                                    rd S2;				rmad;   wr.straight;/*1*/					
+	                                    rd S2;				rmad;   wr.straight;/*1*/						set.creg 3,0 
+	                                    rd S2;				rmad;											
+	                                                        rmad;	wr.straight;/*1*/	/*STEP2*/			set.prec half_fixed,half_fixed,half,single,half_fixed; //write sign, negative -1, positive 0
+	                                    rd S0;rd S1;rd S2;	rmad;   wr.straight;/*1*/						set.smode S0abs,S1real1,S2straight;
+	                                    rd S0;rd S2;		        wr.straight;/*1*/					
+	                                    rd S0;rd S2;		rmad;   wr.straight;/*1*/					
+	                                    rd S0;rd S2;		rmad;   wr.straight;/*1*/					
+	                                    rd S0;rd S2;		rmad;   wr.straight;/*1*/						set.VRAptr rS1, 0*64+2;
+	                                    rd S0;rd S2;		rmad;											set.VRAptr rS0, 1*64;	set.VRAincr rS0, 0*64;
+	                                                        rmad;	wr.straight;/*1*/	/*STEP3*/			set.prec half_fixed,half_fixed,half,single,half_fixed; //write sign, negative -1, positive 0
+	ld.laddr [a1]+1;                    rd S0;rd S1;rd S2;	rmad;   wr.straight;/*1*/   					set.smode S0straight,S1interp2nr,S2zeros;
+	ld.laddr [a1]+1;                    rd S0;				        wr.straight;/*1*/						
+	ld.laddr [a1]+1;                    rd S0;				rmad;   wr.straight;/*1*/						
+	ld.laddr [a1]+1;    ld.normal	R2; rd S0;				rmad;   wr.straight;/*1*/
+	ld.laddr [a1]+1;    ld.normal	R3; rd S0;				rmad;   wr.straight;/*1*/						set.VRAincr rS0, 1*64;
+	ld.laddr [a1]+1;    ld.normal	R4; rd S0;				rmad;                                           set.VRAptr rS0, 2*64;	
+	                    ld.normal	R5;                     rmad;	wr.straight;/*1*/   /*STEP4*/           set.prec half_fixed,half_fixed,half_fixed,single,half;
+	                    ld.normal	R6; rd S0;rd S1;rd S2;	rmad;   wr.straight;/*1*/	st.laddr [a0]+1;    set.smode S0straight,S1real1,S2zeros;
+	                    ld.normal	R7; rd S0;				        wr.straight;/*1*/   st.laddr [a0]+1;    
+										rd S0;				rmad;	wr.straight;/*1*/   st.laddr [a0]+1;    
+	                                    rd S0;				rmad;   wr.straight;/*1*/   st.laddr [a0]+1;    
+	                                    rd S0;				rmad;   wr.straight;/*1*/   st.laddr [a0]+1;    set.creg 3,2;	
+										rd S0;				rmad;						st.laddr [a0]+1;    loop_end;
+			                                                rmad;	wr.straight;/*1*/	/*STEP1*/		    set.prec half_fixed,half_fixed,half,single,half; //write sign binary, negative 0, positive 1
+	                                    rd S0;rd S1;rd S2;	rmad;   wr.straight;/*1*/					    set.smode S0chs,S0real1,S1real1,S2straight;
+	ld.laddr [a0]-18;                   rd S2;				        wr.straight;/*1*/					    set.VRAptr rS0, 2*64;
+	                                    rd S2;				rmad;   wr.straight;/*1*/					    
+	                                    rd S2;				rmad;   wr.straight;/*1*/					    
+	                                    rd S2;				rmad;   wr.straight;/*1*/					    set.creg 3,0 
+	                                    rd S2;				rmad;   				                        
+	                                                        rmad;   wr.straight;/*1*/	/*STEP2*/		    set.prec half_fixed,half_fixed,half,single,half_fixed; //write sign, negative -1, positive 0
+	                                    rd S0;rd S1;rd S2;	rmad;   wr.straight;/*1*/					    set.smode S0abs,S1real1,S2straight;
+	                                    rd S0;rd S2;		        wr.straight;/*1*/					    
+	                                    rd S0;rd S2;		rmad;   wr.straight;/*1*/					    
+	                                    rd S0;rd S2;		rmad;   wr.straight;/*1*/					    set.VRAincr rV, 1*64;
+	                                    rd S0;rd S2;		rmad;   wr.straight;/*1*/					    set.VRAincr rS0, 1*64;
+	                                    rd S0;rd S2;		rmad;   									    set.VRAptr rS0, 2*64;set.VRAptr rS2, 0*64;
+	                                                        rmad;   wr.straight;/*2*/	/*STEP3*/		    set.prec half_fixed,half_fixed,half_fixed,single,half;//write sign, negative -1, positive 0
+										rd S0;rd S1;rd S2;	rmad;   wr.straight;/*3*/   				    set.smode S0chs,S0straight,S1real1,S2i1r1i1r1;
+										rd S0;						wr.straight;/*4*/					    
+										rd S0;				rmad;	wr.straight;/*5*/					    
+										rd S0;				rmad;	wr.straight;/*6*/						set.VRAincr rV, 0*64;
+										rd S0;				rmad;	wr.straight;/*7*/						set.creg 3,2         //output sign binary,
+	                                    rd S0;				rmad;  											set.VRAptr rS1, 1*64;	set.VRAptr rV, 1*64;								
+															rmad;	wr.straight;/*1*/	/*STEP5*/			set.prec half_fixed,half,half_fixed,single,half_fixed; set.VRAptr rS0, 0*64+2; //write sign bits, 1.0 for negative
+										rd S0;rd S1;rd S2;	rmad;	wr.straight;/*1*/						set.smode S0i1r1i1r1,S1straight,S2zeros;
+										rd S1;						wr.straight;/*1*/						
+										rd S1;				rmad;	wr.straight;/*1*/						set.creg 24,6;  //order i = 64, interpolate 1 to 64
+										rd S1;				rmad;	wr.straight;/*1*/						set.VRAptr rS2, 1*64;
+										rd S1;				rmad;	wr.straight;/*1*/						set.creg 3,0 
+										rd S1;				rmad;											set.VRAptr rS0, 2*64;	set.VRAptr rS1, 0*64+2;
+															rmad;	wr.straight;/*1*/	/*STEP6*/			set.prec half_fixed,half_fixed,half_fixed,single,half_fixed; //change sign from 1.0 to 2^(-4)
+										rd S0;rd S1;rd S2;	rmad;	wr.straight;/*1*/						set.smode S0abs,S1interp2nr,S2straight;
+										rd S0;rd S2;				wr.straight;/*1*/					
+										rd S0;rd S2;		rmad;	wr.straight;/*1*/					
+										rd S0;rd S2;		rmad;	wr.straight;/*1*/						set.VRAincr rV, 1*64;
+										rd S0;rd S2;		rmad;	wr.straight;/*1*/					
+										rd S0;rd S2;		rmad;											set.VRAptr rS0, 2*64;
+															rmad;	wr.straight;/*2*/	/*STEP7*/			//right shift by 4 bits, add sign bit to bit12.
+										rd S0;rd S2;		rmad;	wr.straight;/*3*/						set.smode S0straight,S1interp2nr,S2zeros;
+										rd S0;						wr.straight;/*4*/					
+										rd S0;				rmad;	wr.straight;/*5*/					
+										rd S0;				rmad;	wr.straight;/*6*/						set.VRAincr rS2, 1*64;
+										rd S0;				rmad;	wr.straight;/*7*/						set.VRAptr rV, 1*64;	set.VRAptr rS2, 2*64;
+										rd S0;				rmad;											set.VRAptr rS0, 1*64;	set.VRAptr rS1, 0*64+4;
+										                    rmad;	wr.straight;/*1*/	/*STEP8*/			set.prec half_fixed,half,half_fixed,single,half_fixed; 
+										rd S0;rd S1;rd S2;	rmad;   wr.straight;/*2*/						set.smode S0straight,S1interp2nr,S2straight;
+										rd S0;rd S2;		        wr.straight;/*3*/					
+                                        rd S0;rd S2;		rmad;	wr.straight;/*4*/						
+	ld.laddr [a0]+3;    				rd S0;rd S2;		rmad;	wr.straight;/*5*/						set.VRAptr rS1, 0*64+6;
+	ld.laddr [a0]+3;					rd S0;rd S2;		rmad;	wr.straight;/*6*/						set.VRAincr rS2, 0*64;
+	ld.laddr [a0]+3;                    rd S0;rd S2;		rmad;											set.VRAincr rV, 0*64;
+    ld.laddr [a0]+3;    ld.normal	R0;	rd S0;rd S1;        rmad;	wr.straight;/*7*/	/*STEP9*/			set.VRAincr rS0, 0*64;
+    ld.laddr [a0]+3;    ld.normal	R0;	rd S0;rd S2;		rmad;   wr.straight;/*7*/						
+    ld.laddr [a0]-15;   ld.normal	R0;	rd S0;rd S2;		        wr.straight;/*7*/						
+    ld [a2]+0;	        ld.normal	R0;	rd S0;rd S2;		mads;	wr.straight;/*7*/						
+                        ld.normal	R0;	rd S0;rd S2;		mads;	wr.straight;/*7*/						set.VRAptr rS1, 0*64+2;
+						ld.normal	R0;	rd S0;rd S2;		mads;	wr.straight;/*7*/						set.VRAptr rst, 7;set.VRAincr rS0, 1*64;
+						ld.h2l 		R0;	rd S0;rd S2;        mads;											set.VRAptr rV, 7*64+63;	set.VRAptr rS0, 1*64;
+						                                    mads;   wr.straight;/*7*/	/*STEP10*/			set.prec half_fixed,half_fixed,half_fixed,single,half_fixed;
+						                rd S0;rd S1;rd S2;	mads;   wr.straight;/*7*/	st.laddr [a0]+3;	set.smode S0straight,S1interp2nr,S2zeros;
+						                rd S0;				        wr.straight;/*7*/	st.laddr [a0]+3;	set.VRAptr rS1, 7*64+4;
+						                rd S0;				rmad;   wr.straight;/*7*/	st.laddr [a0]+3;	set.VRAptr rS2, 1*64;
+						                rd S0;				rmad;	wr.straight;/*7*/   st.laddr [a0]+3;	set.VRAincr rV, 1*64;
+										rd S0;				rmad;	wr.straight;/*7*/	st.laddr [a0]+3;	set.VRAincr rS2, 1*64;
+						ld.h2l 		R7;	rd S0;				rmad;						st.laddr [a0]-14;	set.VRAptr rS0, 0*64;
+                                                            rmad;	wr.straight;/*0*/	/*STEP11*/			set.prec half_fixed,half,half_fixed,single,half_fixed; 
+                                        rd S0;rd S1;rd S2;	rmad;   wr.straight;/*1*/						set.smode S0straight,S1interp2nr,S2straight;
+                                        rd S0;rd S2;		        wr.straight;/*2*/						set.VRAptr rst, 0;set.VRAincr rst, 1;
+                                        rd S0;rd S2;		rmad;	wr.straight;/*3*/						
+	ld.laddr [a0]+3;    				rd S0;rd S2;		rmad;	wr.straight;/*4*/						set.VRAptr rS1, 7*64+6;
+	ld.laddr [a0]+3;					rd S0;rd S2;		rmad;	wr.straight;/*5*/						set.VRAincr rS2, 0*64;
+	ld.laddr [a0]+3;                    rd S0;rd S2;		rmad;											set.VRAincr rV, 0*64;
+	ld.laddr [a0]+3;    ld.normal	R7;	rd S0;rd S1;       	rmad;	wr.straight;/*6*/	/*STEP12*/			set.VRAincr rS0, 0*64;
+	ld.laddr [a0]+3;    ld.normal	R7;	rd S0;rd S2;		rmad;   wr.straight;/*6*/	
+	ld.laddr [a0]-14;   ld.normal	R7;	rd S0;rd S2;		       	wr.straight;/*6*/	
+	ld.laddr [a0]+3;    ld.normal	R7;	rd S0;rd S2;		mads;	wr.straight;/*6*/	
+	ld.laddr [a0]+3;	ld.normal	R7;	rd S0;rd S2;		mads;	wr.straight;/*6*/						set.VRAincr rV, 1*64+1;
+    ld.laddr [a0]+3;    ld.normal	R7;	rd S0;rd S2;		mads;  	wr.straight;/*6*/						set.VRAincr rS2, 1*64;
+	ld.laddr [a0]+3;    ld.normal	R7;	rd S0;rd S2;		mads;                       					set.VRAptr rS2, 0*64;
+    ld.laddr [a0]+3;    ld.normal	R7;	rd S0;rd S2;        mads;	wr.straight;/*0*/	/*STEP13*/
+    ld.laddr [a0]-16;   ld.normal	R7;	rd S0;rd S2;        mads;   wr.straight;/*1*/	
+                        ld.normal	R7;	rd S0;rd S2;        mads;   wr.straight;/*2*/   st.laddr [a0]+3;	
+                        ld.normal	R7;	rd S0;rd S2;        mads;   wr.straight;/*3*/   st.laddr [a0]+3;	
+                        ld.normal	R7;	rd S0;rd S2;        mads;   wr.straight;/*4*/   st.laddr [a0]+3;	
+                                        rd S0;rd S2;        mads;   wr.straight;/*5*/   st.laddr [a0]+3;
+                                                            mads;   wr.straight;/*6*/   st.laddr [a0]+3;	/*STEP14*/
+                                                            mads;   wr.straight;/*7*/   st.laddr [a0]-14;	
+                                                                    wr.straight;/*0*/	st.laddr [a0]+3;	
+                                                                    wr.straight;/*1*/   st.laddr [a0]+3;	
+                                                                    wr.straight;/*2*/   st.laddr [a0]+3;	
+                                                                    wr.straight;/*3*/   st.laddr [a0]+3;
+                                                                                        st.laddr [a0]+3;	
+LE:                                                                                     st.laddr [a0]+1;	loop_end;
+
+
+	rts;
+	nop;
+	nop;
+
+_comp16_12b_end:				

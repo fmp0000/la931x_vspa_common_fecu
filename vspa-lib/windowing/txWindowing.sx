@@ -1,0 +1,241 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2022 - 2025  NXP
+
+
+#include "vspa.h"
+
+#define WINDOW16	16   
+
+// -----------------------------------------------------------------------------
+// Subroutine name: txWindowing_w16_vecalign
+// Subroutine name: txWindowing_circ_w16_vecalign
+//
+// ABI:
+//
+//	a0: inp_out_p, vec aligned
+//	a1: history_p, vec aligned
+//	a2: real_window_p
+//  g0: CPlen, num of samples
+//	a3: circ_base, vec aligned
+//  g1: circ_size
+// -----------------------------------------------------------------------------
+
+  
+    .global _txWindowing_w16_vecaligned
+    .type _txWindowing_w16_vecaligned, @function
+    .size _txWindowing_w16_vecaligned, _txWindowing_w16_vecaligned_end - _txWindowing_w16_vecaligned
+
+    .global _txWindowing_circ_w16_vecaligned
+    .type _txWindowing_circ_w16_vecaligned, @function
+    .size _txWindowing_circ_w16_vecaligned, _txWindowing_circ_w16_vecaligned_end - _txWindowing_circ_w16_vecaligned
+
+_txWindowing_circ_w16_vecaligned:
+	sr g1,g1,2-UPHW
+    set.range a0, a3, g1;             //source /destination
+_txWindowing_w16_vecaligned:
+
+	sl g0,g0,UPHW;
+	clr.VRA;																		
+	ld [a0]+g0;															setB.VRAptr rS1,2*_VR;
+	ld [a2]+WINDOW16*UPHW;												set.prec half_fixed, half, half_fixed,single,half_fixed;
+	ld.laddr [a1]+0;													
+	ld.laddr [a2]+0;	ld.normal R0;									set.Smode S0straight,S1r2c,S2zeros;
+	ld.laddr [a0]+1;	ld.normal R2;									setB.VRAincr rS0,1*_VR;
+	ld.laddr [a0]-1;	ld.normal R1;	rd S0; rd S1; rd S2;			setB.VRAptr rSt,6;
+	ld [a0]-g0;	   		ld.h2l R2;		
+						ld.h2l R6;		rd S0; rd S1;			rmad;	
+						ld.l2h R6;										
+																rmac;	// update history buffer 
+	st.low [a1]+0,(2*WINDOW16-1);													
+																		setB.VRAptr rSt, 0*_VR;
+																mv a3,0;
+	rts;								wr.straight;
+	st.low [a0]+0,(2*WINDOW16-1);																																						
+	set.range a0, a3, 0;
+	
+_txWindowing_w16_vecaligned_end:
+_txWindowing_circ_w16_vecaligned_end:
+
+
+#define DMEM_MOD		(0x0000007F>>(2-UPHW))
+#define VEC_MOD_MAX		0x0000003F
+
+// -----------------------------------------------------------------------------
+// Subroutine name: txWindowing_w16
+//
+//void txWindowing_circ_w16( cfixed16_t *inp_out_p,
+//				  	  cfixed16_t *history_p,
+//				  	  float16_t  *real_window_p,
+//				  	  uint32_t	  CPlen,
+//				  	  void*		  circ_base,
+//				  	  uint32_t	  circ_size);
+// ABI:
+//
+//	a0: inp_out_p, unaligned
+//	a1: history_p, vec aligned
+//	a2: real_window_p
+//  g0: CPlen, num of samples
+//  a3: circ_base   Note: dmem aligned
+//  g1: circ_size	Note: Number of bytes
+// -----------------------------------------------------------------------------
+
+  
+    .global _txWindowing_w16
+    .type _txWindowing_w16, @function
+    .size _txWindowing_w16, _txWindowing_w16_end - _txWindowing_w16
+    .global _txWindowing_circ_w16
+    .type _txWindowing_circ_w16, @function
+    .size _txWindowing_circ_w16, _txWindowing_circ_w16_end - _txWindowing_circ_w16
+_txWindowing_circ_w16:
+	sr g1,g1,2-UPHW
+	set.range a0, a3, g1;             //source /destination
+_txWindowing_w16:
+	clr.VRA;	
+	setB.VRAptr rSt,6;	
+	mv a6,sp
+	ld.laddr [a0]+1;	mv g3, a0;									 
+	ld.laddr [a0]-1;													setB.VRAincr rSt, 1;//
+	and g3, g3, DMEM_MOD;
+	sl g0,g0,UPHW;		ld.l2h_h2l R6;	
+						ld.l2h     R7;	stA.laddr [a6]+1;									//a6: scratch		
+										stA.laddr [a6]+0;
+	mv a5, g3;
+	sub a3, a6, a5;
+	mv g1, 64*UPHW;																			//each line
+	subs g2, g0, g1																			//g0: CPlen		
+	ld.laddr [a0]+1;													setB.VRAincr rSt, 0;	
+	ld [a0]+g2;															setB.VRAptr rS1,2*_VR;				// -g2: a0 points to sample after CP
+	ld [a2]+WINDOW16*UPHW;												set.prec half_fixed, half, half_fixed,single,half_fixed;
+	ld.laddr [a1]+0;	ld.h2l R0;										setB.VRAptr rSt,6;					//R0: input
+	ld.laddr [a2]+0;	ld.l2h R0;										set.Smode S0straight,S1r2c,S2zeros;
+	ld.laddr [a0]+1;	ld.normal R2;									setB.VRAincr rS0,1*_VR;				//R2: coef
+	ld.laddr [a0]-1;	ld.normal R1;	rd S0; rd S1; rd S2;								//R1: hist
+	ld [a0]-g0;	   		ld.h2l R2;																			//-g0: a0 points to CP head
+	ld [a0]-g3;			ld.h2l R6;		rd S0; rd S1;			rmad;										//R6: samples after CP;   -g3:a0 align to line
+						ld.l2h R6;		//sr g3, g3, 1;								
+	mv g4, (2*WINDOW16-1);										rmac;	 
+	st.low [a1]+0,(2*WINDOW16-1);																			// update history buffer, 16 samples
+	sr g3, g3, UPHW-1;													
+	add g4, g4, g3;	
+																		wr.straight;	set.VRAptr rSt, 0*_VR;
+	st.low [a6]+0,(2*WINDOW16-1);																			// store result into scratch 2nd line
+	and g5, g4, VEC_MOD_MAX;
+	cmp g4, VEC_MOD_MAX;	
+	ld.laddr [a3]+1;
+	ld.laddr [a3]+1;
+	jmp.le 	LE;		
+						ld.h2l R0;
+						ld.l2h_h2l R0;									setB.VRAincr rSt, 1;																														
+	mv g4,  VEC_MOD_MAX;	
+	jmp 	E;
+	st.low [a0]+64*UPHW, g4;
+	st.low [a0]+0, g5;
+LE:	st.low [a0]+0, g4;
+E:	rts;
+	mv a3,0;
+	set.range a0, a3, 0;
+	
+_txWindowing_w16_end:
+_txWindowing_circ_w16_end:
+
+
+
+
+#if 0
+// -----------------------------------------------------------------------------
+// Subroutine name: txWindowing_w32
+// Subroutine name: txWindowing_circ_w32
+//
+// ABI:
+//
+//	a0: inp_out_p
+//	a1: history_p
+//	a2: real_window_p
+//  g0: CPlen
+//	a3: circ_base
+//  g1: circ_size
+// -----------------------------------------------------------------------------
+    .section .text.tx_b
+    .global _txWindowing_w32
+    .type _txWindowing_w32, @function
+    .size _txWindowing_w32, _txWindowing_w32_end - _txWindowing_w32
+    
+    .global _txWindowing_circ_w32
+    .type _txWindowing_circ_w32, @function
+    .size _txWindowing_circ_w32, _txWindowing_circ_w32_end - _txWindowing_circ_w32
+
+_txWindowing_circ_w32:
+    set.range a0, a3, g1;             //source /destination    
+_txWindowing_w32:																						
+	sl g0,g0,UPHW;
+	clr.VRA;																		
+	ld [a0]+g0;															setB.VRAptr rS1,2*_VR;
+	ld.laddr [a2]+0;													set.prec half_fixed, half, half_fixed,single,half_fixed;
+	ld.laddr [a1]+0;													setB.VRAincr rS1, _VRH;
+						ld.normal R0;									set.Smode S0straight,S1r2c,S2zeros;
+	ld.laddr [a0]+1;	ld.normal R2;									setB.VRAincr rS0,1*_VR;
+	ld.laddr [a0]-1;	ld.normal R1;	rd S0; rd S1; rd S2;			setB.VRAptr rSt,6;
+	ld [a0]-g0;							rd S0; rd S1;
+						ld.h2l R6;								rmad;
+						ld.l2h R6;								rmac;
+																mv a3,0;																	
+	st.laddr [a1]+0;													// Update history buffer 
+																		setB.VRAptr rSt, 0*_VR;
+	rts;								wr.straight;
+	st.laddr [a0]+0;																																						
+	set.range a0, a3, 0;
+	
+_txWindowing_w32_end:
+_txWindowing_circ_w32_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: txWindowing_w64
+// Subroutine name: txWindowing_circ_w64
+//
+// ABI:
+//
+//	a0: inp_out_p
+//	a1: history_p
+//	a2: real_window_p
+//  g0: CPlen
+//	a3: circ_base
+//  g1: circ_size
+// -----------------------------------------------------------------------------
+    .section .text.tx_b
+    .global _txWindowing_w64
+    .type _txWindowing_w64, @function
+    .size _txWindowing_w64, _txWindowing_w64_end - _txWindowing_w64
+    
+    .global _txWindowing_circ_w64
+    .type _txWindowing_circ_w64, @function
+    .size _txWindowing_circ_w64, _txWindowing_circ_w64_end - _txWindowing_circ_w64
+
+_txWindowing_circ_w64:
+    set.range a0, a3, g1 ;            //source /destination       
+_txWindowing_w64:
+																				
+	sl g0,g0,UPHW;
+	clr.VRA;																		
+	ld.laddr [a0]+1;																	setB.VRAptr rS1,4*_VR;
+	ld.laddr [a2]+1;																	set.prec half_fixed, half, half_fixed,single,half_fixed;
+	ld.laddr [a1]+1;																	setB.VRAincr rS1,_VR;
+	ld.laddr [a2]+0;	ld.normal R0;													set.Smode S0straight,S1r2c,S2zeros;					// R0 = inp(1:32)
+	ld.laddr [a0]-1;	ld.normal R4;													setB.VRAincr rS0,1*_VR;								// R4 = window(1:64)
+	ld.laddr [a1]-1;	ld.normal R1;	rd S0; rd S1; rd S2;							setB.VRAptr rSt,6;									// R1 = history(1:32)
+	ld [a0]+g0;			ld.normal R5;													setB.VRAincr rSt,1;									// R2 = inp(33:64)
+	ld.laddr [a0]+1;	ld.normal R2;	rd S0; rd S1;			rmad;					setB.VRAptr rS1, 4*_VR+_VRH;							// R5 = window(65:128)
+	ld.laddr [a0]+1;	ld.normal R3;	rd S0; rd S1; rd S2;							setB.VRAincr rV,_VR;									// R3 = history(33:64)
+	ld.laddr [a0]-2;					rd S0; rd S1;			rmac;																		
+	ld [a0]-g0;			ld.h2l R6;								rmad;																		// R6^R7 = new history(1:64)
+						ld.l2h_h2l R6;							rmac;																		// update history buffer 
+	st.laddr [a1]+1;	ld.l2h R7;																												
+	st.laddr [a1]+0;													wr.straight;														// R0 = out(1:32)	
+	st.laddr [a0]+1;																																						
+	rts;				mv a3,0;										wr.straight;														// R1 = out(33:64)
+	st.laddr [a0]+0;														
+	set.range a0, a3, 0 ;
+	
+_txWindowing_w64_end:
+_txWindowing_circ_w64_end:
+#endif
+

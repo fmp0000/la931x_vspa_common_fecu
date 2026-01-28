@@ -1,0 +1,115 @@
+#if (ATAN2_NUM_COEFF == 3) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000430188   mean_abs_error = 0.000110483 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000863319   mean_abs_error = 0.000190644 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000406883   mean_abs_error = 0.000110311 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000477620   mean_abs_error = 0.000115276 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000863319   mean_abs_error = 0.000191652 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000476398   mean_abs_error = 0.000114791 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000430188   mean_abs_error = 0.000109507 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000863319   mean_abs_error = 0.000190914 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000410764   mean_abs_error = 0.000108919 
+// coeff = 0.026390, -0.093003, 0.317026 
+0x3CD83074, 0x3CD83074, 0xBDBE785D, 0xBDBE785D, 0x3EA2512E, 0x3EA2512E
+#endif 
+
+#if (ATAN2_NUM_COEFF == 4) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000097068   mean_abs_error = 0.000020626 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000527982   mean_abs_error = 0.000163115 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000066669   mean_abs_error = 0.000016006 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000169628   mean_abs_error = 0.000032802 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000575155   mean_abs_error = 0.000165796 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000148146   mean_abs_error = 0.000029230 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000080153   mean_abs_error = 0.000019670 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000510451   mean_abs_error = 0.000163306 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000061245   mean_abs_error = 0.000014678 
+// coeff = -0.012983, 0.047404, -0.102574, 0.318091 
+0xBC54B5E1, 0xBC54B5E1, 0x3D422AF3, 0x3D422AF3, 0xBDD21235, 0xBDD21235, 0x3EA2DCD7, 0x3EA2DCD7
+#endif 
+
+#if (ATAN2_NUM_COEFF == 5) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000041410   mean_abs_error = 0.000015695 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000497462   mean_abs_error = 0.000162941 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000013585   mean_abs_error = 0.000004483 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000155692   mean_abs_error = 0.000029172 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000581162   mean_abs_error = 0.000163919 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000127070   mean_abs_error = 0.000024200 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000036771   mean_abs_error = 0.000015389 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000488281   mean_abs_error = 0.000162903 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000008790   mean_abs_error = 0.000002088 
+// coeff = 0.006944, -0.027716, 0.057738, -0.105229, 0.318273 
+0x3BE387DB, 0x3BE387DB, 0xBCE30D0E, 0xBCE30D0E, 0x3D6C7EAC, 0x3D6C7EAC, 0xBDD78226, 0xBDD78226, 0x3EA2F49D, 0x3EA2F49D
+#endif 
+
+#if (ATAN2_NUM_COEFF == 6) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000039982   mean_abs_error = 0.000015634 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000497169   mean_abs_error = 0.000162690 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000011004   mean_abs_error = 0.000003693 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000155692   mean_abs_error = 0.000029138 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000581162   mean_abs_error = 0.000163414 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000129216   mean_abs_error = 0.000024150 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000031674   mean_abs_error = 0.000015279 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000488281   mean_abs_error = 0.000163421 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000001889   mean_abs_error = 0.000000390 
+// coeff = -0.003904, 0.017187, -0.037440, 0.061750, -0.105899, 0.318303 
+0xBB7FD1DF, 0xBB7FD1DF, 0x3C8CCC40, 0x3C8CCC40, 0xBD195A56, 0xBD195A56, 0x3D7CED30, 0x3D7CED30, 0xBDD8E161, 0xBDD8E161, 0x3EA2F8AC, 0x3EA2F8AC
+#endif 
+
+#if (ATAN2_NUM_COEFF == 7) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000039982   mean_abs_error = 0.000015632 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000497169   mean_abs_error = 0.000162643 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000010647   mean_abs_error = 0.000003643 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000155692   mean_abs_error = 0.000029117 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000581162   mean_abs_error = 0.000163346 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000129514   mean_abs_error = 0.000024162 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000031390   mean_abs_error = 0.000015284 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000488281   mean_abs_error = 0.000163718 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000001285   mean_abs_error = 0.000000250 
+// coeff = 0.002268, -0.010995, 0.025682, -0.042303, 0.063096, -0.106057, 0.318309 
+0x3B14A927, 0x3B14A927, 0xBC3422F3, 0xBC3422F3, 0x3CD263BE, 0x3CD263BE, 0xBD2D4665, 0xBD2D4665, 0x3D813894, 0x3D813894, 0xBDD93499, 0xBDD93499, 0x3EA2F95E, 0x3EA2F95E
+#endif 
+
+#if (ATAN2_NUM_COEFF == 8) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000039982   mean_abs_error = 0.000015611 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000497169   mean_abs_error = 0.000162643 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000010611   mean_abs_error = 0.000003635 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000155692   mean_abs_error = 0.000029122 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000581162   mean_abs_error = 0.000163415 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000129454   mean_abs_error = 0.000024160 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000031390   mean_abs_error = 0.000015278 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000488281   mean_abs_error = 0.000163694 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000001331   mean_abs_error = 0.000000250 
+// coeff = -0.001350, 0.007165, -0.018081, 0.030889, -0.044345, 0.063505, -0.106093, 0.318310 
+0xBAB0EA77, 0xBAB0EA77, 0x3BEAC77B, 0x3BEAC77B, 0xBC941EB9, 0xBC941EB9, 0x3CFD0B06, 0x3CFD0B06, 0xBD35A2E5, 0xBD35A2E5, 0x3D820F0A, 0x3D820F0A, 0xBDD94772, 0xBDD94772, 0x3EA2F97D, 0x3EA2F97D
+#endif 
+
+#if (ATAN2_NUM_COEFF == 9) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000039982   mean_abs_error = 0.000015611 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000497169   mean_abs_error = 0.000162643 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000010611   mean_abs_error = 0.000003635 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000155692   mean_abs_error = 0.000029122 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000581162   mean_abs_error = 0.000163415 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000129454   mean_abs_error = 0.000024160 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000031390   mean_abs_error = 0.000015266 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000488281   mean_abs_error = 0.000163692 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000001301   mean_abs_error = 0.000000249 
+// coeff = 0.000818, -0.004725, 0.012893, -0.023226, 0.033514, -0.045102, 0.063621, -0.106101, 0.318310 
+0x3A564FF0, 0x3A564FF0, 0xBB9AD7E4, 0xBB9AD7E4, 0x3C533BE3, 0x3C533BE3, 0xBCBE44BB, 0xBCBE44BB, 0x3D094635, 0x3D094635, 0xBD38BD2F, 0xBD38BD2F, 0x3D824B97, 0x3D824B97, 0xBDD94B92, 0xBDD94B92, 0x3EA2F982, 0x3EA2F982
+#endif 
+
+#if (ATAN2_NUM_COEFF == 10) 
+// inp_prec = half_fixed   out_prec = half_fixed   max_abs_error = 0.000039982   mean_abs_error = 0.000015617 
+// inp_prec = half_fixed   out_prec = half         max_abs_error = 0.000497169   mean_abs_error = 0.000162643 
+// inp_prec = half_fixed   out_prec = single       max_abs_error = 0.000010611   mean_abs_error = 0.000003635 
+// inp_prec = half         out_prec = half_fixed   max_abs_error = 0.000155692   mean_abs_error = 0.000029122 
+// inp_prec = half         out_prec = half         max_abs_error = 0.000581162   mean_abs_error = 0.000163415 
+// inp_prec = half         out_prec = single       max_abs_error = 0.000129454   mean_abs_error = 0.000024160 
+// inp_prec = single       out_prec = half_fixed   max_abs_error = 0.000031390   mean_abs_error = 0.000015272 
+// inp_prec = single       out_prec = half         max_abs_error = 0.000488281   mean_abs_error = 0.000163692 
+// inp_prec = single       out_prec = single       max_abs_error = 0.000001324   mean_abs_error = 0.000000250 
+// coeff = -0.000502, 0.003142, -0.009251, 0.017701, -0.026256, 0.034666, -0.045359, 0.063652, -0.106103, 0.318310 
+0xBA039CC6, 0xBA039CC6, 0x3B4DEE50, 0x3B4DEE50, 0xBC178FAF, 0xBC178FAF, 0x3C9101F0, 0x3C9101F0, 0xBCD717D7, 0xBCD717D7, 0x3D0DFDC2, 0x3D0DFDC2, 0xBD39CA08, 0xBD39CA08, 0x3D825BC1, 0x3D825BC1, 0xBDD94C74, 0xBDD94C74, 0x3EA2F983, 0x3EA2F983
+#endif 
+
+#if !((3 <= ATAN2_NUM_COEFF ) && (ATAN2_NUM_COEFF <= 10)) 
+#error "The number of coefficients is not supported!" 
+#endif 

@@ -1,0 +1,818 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2018 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           qamDemod256Nr.sx
+//! @brief          QAM demodulator for 256QAM
+//! @author         NXP Semiconductor, Inc.
+// =============================================================================
+#include "vspa.h"
+
+#define _VR     (__AU_COUNT__*4)
+#define _VRH    (__AU_COUNT__*2)
+
+#include "qam.h"
+
+
+    .global _qamDemodV3_5g
+    .type   _qamDemodV3_5g, @function
+
+_qamDemodV3_5g:
+    
+    cmp g1, QAM_256;
+    mv g2, SATURATION_SCALING_FACTOR_5G;     //g2=1/128
+    jmp.eq _qamDemod256V3:
+
+    cmp g1, QAM_64;
+    mv a8, a3;
+    jmp.eq _qamDemod64V3:
+    
+    cmp g1, QAM_16;
+    fnop;
+    jmp.eq _qamDemod16V3:
+    
+    cmp g1, QAM_QPSK;
+    fnop;
+    jmp.eq _qamDemodQpskV3:
+    
+    cmp g1, QAM_BPSK;
+    fnop;
+    jmp.eq _qamDemodBpskV3:
+    fnop;
+    fnop;
+
+    .size   _qamDemodV3_5g, .-_qamDemodV3_5g   
+
+    .global _qamDemodV3_Wifi
+    .type   _qamDemodV3_Wifi, @function
+
+_qamDemodV3_Wifi:
+    
+    cmp g1, QAM_256;
+    mv g2, SATURATION_SCALING_FACTOR_WIFI;              //g2=-1/16
+    jmp.eq _qamDemod256V3_Wifi:
+
+    cmp g1, QAM_64;
+    mv a8, a3;                      //a8=beginning of scratch (to store scaled SNR vec)
+    jmp.eq _qamDemod64V3_Wifi:
+    
+    cmp g1, QAM_16;
+    fnop;
+    jmp.eq _qamDemod16V3_Wifi:
+    
+    cmp g1, QAM_QPSK;
+    fnop;
+    jmp.eq _qamDemodQpskV3:
+    
+    cmp g1, QAM_BPSK;
+    fnop;
+    jmp.eq _qamDemodBpskV3:
+    fnop;
+    fnop;
+
+    .size   _qamDemodV3_Wifi, .-_qamDemodV3_Wifi   
+
+
+
+    .global _qamDemod256V3
+    .type   _qamDemod256V3, @function
+
+_qamDemod256V3:
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+   
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; mv a4, a8; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1; mv a10, a2;               loop_end;                               //a10 is address of output buffer
+    
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b4=snr*imag(y)
+////////////////////////////////////////////////////    
+    sl g3, g0, 4+UPHW;
+    mv a6, g3;
+    add a9, a8, a6;                         //a9 is the address in scratch buffer to store intermediate LLRs
+    mv a3, a9;
+    ld.laddr [a4]+1;                             set.Smode S0straight, S1r2c,S2zeros;
+    ld.laddr [a0]+1;                             set.VRAptr rS1, 0;
+                                                 set.VRArange1 rS1, 0, SIZEVEC32;
+                     ld.normal R0;               set.VRAptr rS0, SIZEVEC16;set.VRAincr rS1, SIZEVEC32;
+    ld.laddr [a0]+1; ld.normal R1;                                   set.prec half, half, single, single, half;
+                                   rd S0; rd S1; rd S2;              set.prec half, half, single, single, half_fixed;               //S0=y(1:32); S1=snr(1:32)
+    mv a5, (128)*UPHW;
+    ld.laddr [a4]+1; ld.normal R1;               rmad;               set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     set.prec half, half, single, single, half_fixed;
+    set.loop g1, 7;                                                  
+                     ld.normal R0;               rmad; mv a6, _normalization_const;                
+    ld.laddr [a0]+1; ld.normal R1;                     wr.straight;  set.prec half, half, single, single, half;       loop_begin;
+    st.laddr [a3]+1;               rd S0; rd S1;       wr.straight;  set.prec half, half, single, single, half_fixed;               //store b0b4 in HFloat to scratch buffer
+    st.llr8  [a2]+a5;                                                                                                               //store packed b0b4 to output buffer
+    ld.laddr [a4]+1; ld.normal R1;               rmad; wr.straight;  set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     
+    st.laddr [a3]+1;                                   wr.straight;  set.prec half, half, single, single, half_fixed;
+    st.llr8  [a2]+a5;ld.normal R0;               rmad;                                                                loop_end;
+                                                       
+////////////////////////////////////////////////////////////////////////    
+////Calculate b1=(8/sqrt(170))*snr-abs(b0); b5=(8/sqrt(170))*snr-abs(b4)
+////////////////////////////////////////////////////////////////////////     
+    mv a2, a10;
+    mv a1, a8;
+    add a2, 32*UPHW; 
+    set.VRArange1 rS1, 0, 3*SIZEVEC64;
+    set.VRArange1 rS0, SIZEVEC16, 2*SIZEVEC16;
+    set.VRAincr rS1, SIZEVEC64; set.VRAptr rS0, 1*SIZEVEC16;                                                   
+    set.VRAincr rS0, SIZEVEC16;                                                  
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a3, a9;
+    set.loop g1, 8;   ld.h2l R1;                 
+                      ld.normal R0;                                  set.prec half, half, single, single, half;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(170); S1=snr(1:32)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                       //S0=-|b0b4(1:32)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;                                                       
+                                                  rmac;              set.prec half, half, single, single, half;
+    ld.laddr [a1]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(170); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                       //S0=-|b0b4(33:64)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;
+                      ld.normal R0;               rmac; wr.straight; set.prec half, half, single, single, half;        loop_begin;  //AUout=b1b5(1:32)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0chs, S0hword, S1r2c;                                      //store b1b5(1:32) in HFloat to scratch buffer
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;               //store packed b1b5(1:32) to output buffer
+    ld.laddr [a1]+1;                              rmac; wr.straight; set.prec half, half, single, single, half;                     //AUout=b1b5(33:64)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0chs, S0hword, S1r2c;     
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;           
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;  loop_end;
+    
+////////////////////////////////////////////////////////////////////////    
+////Calculate b2=(4/sqrt(170))*snr-abs(b1); b6=(4/sqrt(170))*snr-abs(b5)
+////////////////////////////////////////////////////////////////////////
+    mv a2, a10;
+    mv a1, a8;
+    add a2, 64*UPHW; 
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a3, a9;
+    set.loop g1, 8;   ld.h2l R1;                 
+                      ld.normal R0;                                  set.prec half, half, single, single, half;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=4/sqrt(170); S1=snr(1:32)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                       //S0=-|b1b5(1:32)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;                                                                                               
+                                                  rmac;              set.prec half, half, single, single, half;
+    ld.laddr [a1]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=4/sqrt(170); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                       //S0=-|b1b5(33:64)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;
+                      ld.normal R0;               rmac; wr.straight; set.prec half, half, single, single, half;        loop_begin;  //AUout=b2b6(1:32)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //store b2b6(1:32) in HFloat to scratch buffer
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0chs, S0abs,S1real1;
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;               //store packed b2b6(1:32) to output buffer
+    ld.laddr [a1]+1;                              rmac; wr.straight; set.prec half, half, single, single, half;                     //AUout=b2b6(33:64)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;     
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0chs, S0abs,S1real1;           
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;  loop_end;
+                           
+////////////////////////////////////////////////////////////////////////    
+////Calculate b3=(2/sqrt(170))*snr-abs(b2); b7=(2/sqrt(170))*snr-abs(b6)
+////////////////////////////////////////////////////////////////////////
+    mv a1, a8; 
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a2, a10;
+                      ld.h2l R1; add a2, 96*UPHW;               
+    ld.laddr [a0]+1;  ld.normal R0;                                  set.prec half, half, single, single, half_fixed;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(170); S1=snr(1:32)
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                    //S0=-|b3b6(1:32)|; S1=1s
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad;              set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(170); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1; rmac;              set.Smode S0chs, S0abs,S1real1;                                    //S0=-|b3b6(33:64)|; S1=1s
+    set.loop g1, 5;   ld.normal R0;               rmad;             
+                      ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;     
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1; loop_begin;
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad; wr.straight; set.Smode S0hword, S1r2c;                                   //AUout=b3b7(1:32)
+    st.llr8  [a2]+a5;               rd S0; rd S1; rmac;              set.Smode S0chs, S0abs,S1real1;                                    //store packed b3b7(1:32) to output buffer
+    ld.laddr [a0]+1;  ld.normal R0;               rmad; wr.straight;                                                             //AUout=b3b7(33:64)
+    st.llr8  [a2]+a5; ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;      loop_end;                    //store packed b3b7(33:64) to output buffer
+        
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemod256V3, .-_qamDemod256V3   
+
+
+    .global _qamDemod64V3
+    .type   _qamDemod64V3, @function
+
+
+_qamDemod64V3:
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; mv a4, a8; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1; mv a10, a2;               loop_end;
+    
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b3=snr*imag(y)
+////////////////////////////////////////////////////    
+    sl g3, g0, 4+UPHW;
+    mv a6, g3;
+    add a9, a8, a6;                         //a9 is the address in scratch buffer to store intermediate LLRs
+    mv a3, a9;
+    ld.laddr [a4]+1;                             set.Smode S0straight, S1r2c,S2zeros;
+    ld.laddr [a0]+1;                             set.VRAptr rS1, 0;
+                                                 set.VRArange1 rS1, 0, SIZEVEC32;
+                     ld.normal R0;               set.VRAptr rS0, SIZEVEC16;set.VRAincr rS1, SIZEVEC32;
+    ld.laddr [a0]+1; ld.normal R1;                                   set.prec half, half, single, single, half;
+                                   rd S0; rd S1; rd S2;              set.prec half, half, single, single, half_fixed;               //S0=y(1:32); S1=snr(1:32)
+    mv a5, (96)*UPHW;
+    ld.laddr [a4]+1; ld.normal R1;               rmad;               set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     set.prec half, half, single, single, half_fixed;
+    set.loop g1, 7;                                                  
+                     ld.normal R0;               rmad; mv a6, _normalization_const;                
+    ld.laddr [a0]+1; ld.normal R1;                     wr.straight;  set.prec half, half, single, single, half;       loop_begin;
+    st.laddr [a3]+1;               rd S0; rd S1;       wr.straight;  set.prec half, half, single, single, half_fixed;               //store b0b3 in HFloat to scratch buffer
+    st.llr8  [a2]+a5;                                                                                                               //store packed b0b3 to output buffer
+    ld.laddr [a4]+1; ld.normal R1;               rmad; wr.straight;  set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     
+    st.laddr [a3]+1;                                   wr.straight;  set.prec half, half, single, single, half_fixed;
+    st.llr8  [a2]+a5;ld.normal R0;               rmad;                                                                loop_end;
+                                                       
+////////////////////////////////////////////////////////////////////////    
+////Calculate b1=(4/sqrt(42))*snr-abs(b0); b4=(4/sqrt(42))*snr-abs(b3)
+////////////////////////////////////////////////////////////////////////     
+    mv a2, a10;
+    mv a1, a8;
+    add a2, 32*UPHW;
+    add a6, 4*UPHW; 
+    set.VRArange1 rS1, 0, 3*SIZEVEC64;
+    set.VRArange1 rS0, SIZEVEC16, 2*SIZEVEC16;
+    set.VRAincr rS1, SIZEVEC64; set.VRAptr rS0, 1*SIZEVEC16;                                                   
+    set.VRAincr rS0, SIZEVEC16;                                                  
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a3, a9;
+    set.loop g1, 8;   ld.h2l R1;                 
+                      ld.normal R0;                                  set.prec half, half, single, single, half;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(42); S1=snr(1:32)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                 //S0=-|b0b3(1:32)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;                                                       
+                                                  rmac;              set.prec half, half, single, single, half;
+    ld.laddr [a1]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(42); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                 //S0=-|b0b3(33:64)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;
+                      ld.normal R0;               rmac; wr.straight; set.prec half, half, single, single, half;        loop_begin;  //AUout=b1b4(1:32)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //store b1b4(1:32) in HFloat to scratch buffer
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0chs, S0abs,S1real1;
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;               //store packed b1b4(1:32) to output buffer
+    ld.laddr [a1]+1;                              rmac; wr.straight; set.prec half, half, single, single, half;                     //AUout=b1b4(33:64)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;     
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0chs, S0abs,S1real1;           
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;  loop_end;
+    
+
+                           
+////////////////////////////////////////////////////////////////////////    
+////Calculate b3=(2/sqrt(42))*snr-abs(b2); b6=(2/sqrt(42))*snr-abs(b5)
+////////////////////////////////////////////////////////////////////////
+    mv a1, a8; 
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a2, a10;
+                      ld.h2l R1; add a2, 64*UPHW;               
+    ld.laddr [a0]+1;  ld.normal R0;                                  set.prec half, half, single, single, half_fixed;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(42); S1=snr(1:32)
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                              //S0=-|b2b5(1:32)|; S1=1s
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad;              set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(42); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1; rmac;              set.Smode S0chs, S0abs,S1real1;                              //S0=-|b2b5(33:64)|; S1=1s
+    set.loop g1, 5;   ld.normal R0;               rmad;             
+                      ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;     
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1; loop_begin;
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad; wr.straight; set.Smode S0hword, S1r2c;                                   //AUout=b3b6(1:32)
+    st.llr8  [a2]+a5;               rd S0; rd S1; rmac;              set.Smode S0chs, S0abs,S1real1;                              //store packed b3b6(1:32) to output buffer
+    ld.laddr [a0]+1;  ld.normal R0;               rmad; wr.straight;                                                             //AUout=b3b6(33:64)
+    st.llr8  [a2]+a5; ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;      loop_end;                    //store packed b3b6(33:64) to output buffer
+        
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemod64V3, .-_qamDemod64V3  
+
+
+    .global _qamDemod16V3
+    .type   _qamDemod16V3, @function
+
+_qamDemod16V3:
+
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; mv a4, a8; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1; mv a10, a2;               loop_end;
+
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b2=snr*imag(y)
+////////////////////////////////////////////////////    
+    sl g3, g0, 4+UPHW;
+    mv a6, g3;
+    add a9, a8, a6;                         //a9 is the address in scratch buffer to store intermediate LLRs
+    mv a3, a9;
+    ld.laddr [a4]+1;                             set.Smode S0straight, S1r2c,S2zeros;
+    ld.laddr [a0]+1;                             set.VRAptr rS1, 0;
+                                                 set.VRArange1 rS1, 0, SIZEVEC32;
+                     ld.normal R0;               set.VRAptr rS0, SIZEVEC16;set.VRAincr rS1, SIZEVEC32;
+    ld.laddr [a0]+1; ld.normal R1;                                   set.prec half, half, single, single, half;
+                                   rd S0; rd S1; rd S2;              set.prec half, half, single, single, half_fixed;               //S0=y(1:32); S1=snr(1:32)
+    mv a5, (64)*UPHW;
+    ld.laddr [a4]+1; ld.normal R1;               rmad;               set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     set.prec half, half, single, single, half_fixed;
+    set.loop g1, 7;                                                  
+                     ld.normal R0;               rmad; mv a6, _normalization_const;                
+    ld.laddr [a0]+1; ld.normal R1;                     wr.straight;  set.prec half, half, single, single, half;       loop_begin;
+    st.laddr [a3]+1;               rd S0; rd S1;       wr.straight;  set.prec half, half, single, single, half_fixed;               //store b0b2 in HFloat to scratch buffer
+    st.llr8  [a2]+a5;                                                                                                               //store packed b0b2 to output buffer
+    ld.laddr [a4]+1; ld.normal R1;               rmad; wr.straight;  set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     
+    st.laddr [a3]+1;                                   wr.straight;  set.prec half, half, single, single, half_fixed;
+    st.llr8  [a2]+a5;ld.normal R0;               rmad;                                                                loop_end;
+
+////////////////////////////////////////////////////////////////////////    
+////Calculate b1=(2/sqrt(10))*snr-abs(b0); b3=(2/sqrt(10))*snr-abs(b2)
+////////////////////////////////////////////////////////////////////////
+    mv a1, a8;
+    add a6, 6*UPHW; 
+    set.VRArange1 rS1, 0, 3*SIZEVEC64;
+    set.VRArange1 rS0, SIZEVEC16, 2*SIZEVEC16;
+    set.VRAincr rS1, SIZEVEC64; set.VRAptr rS0, 1*SIZEVEC16;                                                   
+    set.VRAincr rS0, SIZEVEC16;      
+    ld [a6]+0*UPHW;       
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a2, a10;
+                      ld.h2l R1; add a2, 32*UPHW;               
+    ld.laddr [a0]+1;  ld.normal R0;                                  set.prec half, half, single, single, half_fixed;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(10); S1=snr(1:32)
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1;                                    //S0=-|b0b2(1:32)|; S1=1s
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad;              set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(10); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1; rmac;              set.Smode S0chs, S0abs,S1real1;                                    //S0=-|b0b2(33:64)|; S1=1s
+    set.loop g1, 5;   ld.normal R0;               rmad;             
+                      ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;     
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0chs, S0abs,S1real1; loop_begin;
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad; wr.straight; set.Smode S0hword, S1r2c;                                   //AUout=b1b3(1:32)
+    st.llr8  [a2]+a5;               rd S0; rd S1; rmac;              set.Smode S0chs, S0abs,S1real1;                                    //store packed b1b3(1:32) to output buffer
+    ld.laddr [a0]+1;  ld.normal R0;               rmad; wr.straight;                                                             //AUout=b1b3(33:64)
+    st.llr8  [a2]+a5; ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;      loop_end;                    //store packed b1b3(33:64) to output buffer
+
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemod16V3, .-_qamDemod16V3  
+
+
+    .global _qamDemodQpskV3
+    .type   _qamDemodQpskV3, @function
+
+_qamDemodQpskV3:
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1;                           loop_end;
+    
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b1=snr*imag(y)
+////////////////////////////////////////////////////       
+    ld.laddr [a8]+1;    set.prec half, half, single, single, half_fixed;
+    ld.laddr [a0]+1;    set.VRAincr rS1,SIZEVEC32; 
+    set.VRArange1 rS1, 1*SIZEVEC16,1*SIZEVEC16+SIZEVEC32;
+    ld.laddr [a0]+1;    ld.normal R1;
+                        ld.normal R0;
+    ld.laddr [a8]+1;                   rd S0; rd S1; set.Smode S0straight, S1r2c;
+    ld.laddr [a0]+1;    ld.normal R0;
+    set.loop g1, 5;                    rd S0; rd S1; rmad;
+    ld.laddr [a0]+1;    ld.normal R1;
+    mv a4, 32*UPHW;     ld.normal R0;                rmad;
+    ld.laddr [a8]+1;                   rd S0; rd S1;                    loop_begin;
+    ld.laddr [a0]+1;    ld.normal R0;                      wr.straight;
+    st.llr8  [a2]+a4;                  rd S0; rd S1; rmad;
+    ld.laddr [a0]+1;    ld.normal R1;                      wr.straight;
+    st.llr8  [a2]+a4;   ld.normal R0;                rmad;              loop_end;
+    
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemodQpskV3, .-_qamDemodQpskV3  
+
+    .global _qamDemodBpskV3
+    .type   _qamDemodBpskV3, @function
+      
+_qamDemodBpskV3:
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1;                           loop_end;
+    
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b1=snr*imag(y)
+////////////////////////////////////////////////////
+    set.VRArange1 rS1, 1*SIZEVEC16,1*SIZEVEC16+SIZEVEC32;
+    ld.laddr [a8]+1;    set.prec half, half, single, single, half_fixed;
+    ld.laddr [a0]+1;    set.VRAincr rS1,SIZEVEC32;
+    ld.laddr [a0]+1;    set.VRAincr rV,SIZEVEC32;
+                      ld.normal R1; set.VRArange1 rV, 3*SIZEVEC16,3*SIZEVEC16+SIZEVEC32;
+    ld.laddr [a8]+1;  ld.normal R0;
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rd S1; set.Smode S0straight, S1r2c;
+    ld.laddr [a0]+1;                 rd S0; rd S1;
+    set.loop g1, 4;   ld.normal R1;                rmad;
+    ld.laddr [a8]+1;  ld.normal R0;                rmad;
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rd S1;
+    ld.laddr [a0]+1;                 rd S0; rd S1;
+    mv a4, 32*UPHW;   ld.normal R1;                rmad; wr.even;
+    ld.laddr [a8]+1;  ld.normal R0;                rmad; wr.even;  loop_begin;
+    ld.laddr [a0]+1;  ld.normal R0;  rd S0; rd S1;
+    ld.laddr [a0]+1;                 rd S0; rd S1;
+    st.llr8  [a2]+a4; ld.normal R1;                rmad; wr.even;  loop_end;
+
+
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemodBpskV3, .-_qamDemodBpskV3  
+
+
+    .global _qamDemod256V3_Wifi
+    .type   _qamDemod256V3_Wifi, @function
+
+_qamDemod256V3_Wifi:
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+   
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; mv a4, a8; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1; mv a10, a2;               loop_end;                               //a10 is address of output buffer
+    
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b4=snr*imag(y)
+////////////////////////////////////////////////////    
+    sl g3, g0, 4+UPHW;
+    mv a6, g3;
+    add a9, a8, a6;                         //a9 is the address in scratch buffer to store intermediate LLRs
+    mv a3, a9;
+    ld.laddr [a4]+1;                             set.Smode S0straight, S1r2c,S2zeros;
+    ld.laddr [a0]+1;                             set.VRAptr rS1, 0;
+                                                 set.VRArange1 rS1, 0, SIZEVEC32;
+                     ld.normal R0;               set.VRAptr rS0, SIZEVEC16;set.VRAincr rS1, SIZEVEC32;
+    ld.laddr [a0]+1; ld.normal R1;                                   set.prec half, half, single, single, half;
+                                   rd S0; rd S1; rd S2;              set.prec half, half, single, single, half_fixed;               //S0=y(1:32); S1=snr(1:32)
+    mv a5, (128)*UPHW;
+    ld.laddr [a4]+1; ld.normal R1;               rmad;               set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     set.prec half, half, single, single, half_fixed;
+    set.loop g1, 7;                                                  
+                     ld.normal R0;               rmad; mv a6, _normalization_const;                
+    ld.laddr [a0]+1; ld.normal R1;                     wr.straight;  set.prec half, half, single, single, half;       loop_begin;
+    st.laddr [a3]+1;               rd S0; rd S1;       wr.straight;  set.prec half, half, single, single, half_fixed;               //store b0b4 in HFloat to scratch buffer
+    st.llr8  [a2]+a5;                                                                                                               //store packed b0b4 to output buffer
+    ld.laddr [a4]+1; ld.normal R1;               rmad; wr.straight;  set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     
+    st.laddr [a3]+1;                                   wr.straight;  set.prec half, half, single, single, half_fixed;
+    st.llr8  [a2]+a5;ld.normal R0;               rmad;                                                                loop_end;
+                                                       
+////////////////////////////////////////////////////////////////////////    
+////Calculate b1=(8/sqrt(170))*snr-abs(b0); b5=(8/sqrt(170))*snr-abs(b4)
+////////////////////////////////////////////////////////////////////////     
+    mv a2, a10;
+    mv a1, a8;
+    add a2, 32*UPHW; 
+    set.VRArange1 rS1, 0, 3*SIZEVEC64;
+    set.VRArange1 rS0, SIZEVEC16, 2*SIZEVEC16;
+    set.VRAincr rS1, SIZEVEC64; set.VRAptr rS0, 1*SIZEVEC16;                                                   
+    set.VRAincr rS0, SIZEVEC16;                                                  
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a3, a9;
+    set.loop g1, 8;   ld.h2l R1;                 
+                      ld.normal R0;                                  set.prec half, half, single, single, half;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(170); S1=snr(1:32)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                       //S0=-|b0b4(1:32)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;                                                       
+                                                  rmac;              set.prec half, half, single, single, half;
+    ld.laddr [a1]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(170); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                       //S0=-|b0b4(33:64)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;
+                      ld.normal R0;               rmac; wr.straight; set.prec half, half, single, single, half;        loop_begin;  //AUout=b1b5(1:32)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //store b1b5(1:32) in HFloat to scratch buffer
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;               //store packed b1b5(1:32) to output buffer
+    ld.laddr [a1]+1;                              rmac; wr.straight; set.prec half, half, single, single, half;                     //AUout=b1b5(33:64)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;     
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;           
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;  loop_end;
+    
+////////////////////////////////////////////////////////////////////////    
+////Calculate b2=(4/sqrt(170))*snr-abs(b1); b6=(4/sqrt(170))*snr-abs(b5)
+////////////////////////////////////////////////////////////////////////
+    mv a2, a10;
+    mv a1, a8;
+    add a2, 64*UPHW; 
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a3, a9;
+    set.loop g1, 8;   ld.h2l R1;                 
+                      ld.normal R0;                                  set.prec half, half, single, single, half;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=4/sqrt(170); S1=snr(1:32)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                       //S0=-|b1b5(1:32)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;                                                                                               
+                                                  rmac;              set.prec half, half, single, single, half;
+    ld.laddr [a1]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=4/sqrt(170); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                       //S0=-|b1b5(33:64)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;
+                      ld.normal R0;               rmac; wr.straight; set.prec half, half, single, single, half;        loop_begin;  //AUout=b2b6(1:32)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //store b2b6(1:32) in HFloat to scratch buffer
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;               //store packed b2b6(1:32) to output buffer
+    ld.laddr [a1]+1;                              rmac; wr.straight; set.prec half, half, single, single, half;                     //AUout=b2b6(33:64)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;     
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;           
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;  loop_end;
+                           
+////////////////////////////////////////////////////////////////////////    
+////Calculate b3=(2/sqrt(170))*snr-abs(b2); b7=(2/sqrt(170))*snr-abs(b6)
+////////////////////////////////////////////////////////////////////////
+    mv a1, a8; 
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a2, a10;
+                      ld.h2l R1; add a2, 96*UPHW;               
+    ld.laddr [a0]+1;  ld.normal R0;                                  set.prec half, half, single, single, half_fixed;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(170); S1=snr(1:32)
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                    //S0=-|b3b6(1:32)|; S1=1s
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad;              set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(170); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1; rmac;              set.Smode S0abs,S1real1;                                    //S0=-|b3b6(33:64)|; S1=1s
+    set.loop g1, 5;   ld.normal R0;               rmad;             
+                      ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;     
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1; loop_begin;
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad; wr.straight; set.Smode S0hword, S1r2c;                                   //AUout=b3b7(1:32)
+    st.llr8  [a2]+a5;               rd S0; rd S1; rmac;              set.Smode S0abs,S1real1;                                    //store packed b3b7(1:32) to output buffer
+    ld.laddr [a0]+1;  ld.normal R0;               rmad; wr.straight;                                                             //AUout=b3b7(33:64)
+    st.llr8  [a2]+a5; ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;      loop_end;                    //store packed b3b7(33:64) to output buffer
+        
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemod256V3_Wifi, .-_qamDemod256V3_Wifi   
+
+
+    .global _qamDemod64V3_Wifi
+    .type   _qamDemod64V3_Wifi, @function
+
+
+_qamDemod64V3_Wifi:
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; mv a4, a8; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1; mv a10, a2;               loop_end;
+    
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b3=snr*imag(y)
+////////////////////////////////////////////////////    
+    sl g3, g0, 4+UPHW;
+    mv a6, g3;
+    add a9, a8, a6;                         //a9 is the address in scratch buffer to store intermediate LLRs
+    mv a3, a9;
+    ld.laddr [a4]+1;                             set.Smode S0straight, S1r2c,S2zeros;
+    ld.laddr [a0]+1;                             set.VRAptr rS1, 0;
+                                                 set.VRArange1 rS1, 0, SIZEVEC32;
+                     ld.normal R0;               set.VRAptr rS0, SIZEVEC16;set.VRAincr rS1, SIZEVEC32;
+    ld.laddr [a0]+1; ld.normal R1;                                   set.prec half, half, single, single, half;
+                                   rd S0; rd S1; rd S2;              set.prec half, half, single, single, half_fixed;               //S0=y(1:32); S1=snr(1:32)
+    mv a5, (96)*UPHW;
+    ld.laddr [a4]+1; ld.normal R1;               rmad;               set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     set.prec half, half, single, single, half_fixed;
+    set.loop g1, 7;                                                  
+                     ld.normal R0;               rmad; mv a6, _normalization_const;                
+    ld.laddr [a0]+1; ld.normal R1;                     wr.straight;  set.prec half, half, single, single, half;       loop_begin;
+    st.laddr [a3]+1;               rd S0; rd S1;       wr.straight;  set.prec half, half, single, single, half_fixed;               //store b0b3 in HFloat to scratch buffer
+    st.llr8  [a2]+a5;                                                                                                               //store packed b0b3 to output buffer
+    ld.laddr [a4]+1; ld.normal R1;               rmad; wr.straight;  set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     
+    st.laddr [a3]+1;                                   wr.straight;  set.prec half, half, single, single, half_fixed;
+    st.llr8  [a2]+a5;ld.normal R0;               rmad;                                                                loop_end;
+                                                       
+////////////////////////////////////////////////////////////////////////    
+////Calculate b1=(4/sqrt(42))*snr-abs(b0); b4=(4/sqrt(42))*snr-abs(b3)
+////////////////////////////////////////////////////////////////////////     
+    mv a2, a10;
+    mv a1, a8;
+    add a2, 32*UPHW;
+    add a6, 4*UPHW; 
+    set.VRArange1 rS1, 0, 3*SIZEVEC64;
+    set.VRArange1 rS0, SIZEVEC16, 2*SIZEVEC16;
+    set.VRAincr rS1, SIZEVEC64; set.VRAptr rS0, 1*SIZEVEC16;                                                   
+    set.VRAincr rS0, SIZEVEC16;                                                  
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a3, a9;
+    set.loop g1, 8;   ld.h2l R1;                 
+                      ld.normal R0;                                  set.prec half, half, single, single, half;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(42); S1=snr(1:32)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                 //S0=-|b0b3(1:32)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;                                                       
+                                                  rmac;              set.prec half, half, single, single, half;
+    ld.laddr [a1]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //S0=8/sqrt(42); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                 //S0=-|b0b3(33:64)|; S1=1s
+                                                  rmad;              set.prec half, half, single, single, half_fixed;
+                      ld.normal R0;               rmac; wr.straight; set.prec half, half, single, single, half;        loop_begin;  //AUout=b1b4(1:32)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                      //store b1b4(1:32) in HFloat to scratch buffer
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;               //store packed b1b4(1:32) to output buffer
+    ld.laddr [a1]+1;                              rmac; wr.straight; set.prec half, half, single, single, half;                     //AUout=b1b4(33:64)
+    st.laddr [a3]+1;  ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;     
+    ld.laddr [a0]+1;                rd S0; rd S1;       wr.straight; set.Smode S0abs,S1real1;           
+    st.llr8  [a2]+a5;                             rmad;              set.prec half, half, single, single, half_fixed;  loop_end;
+    
+
+                           
+////////////////////////////////////////////////////////////////////////    
+////Calculate b3=(2/sqrt(42))*snr-abs(b2); b6=(2/sqrt(42))*snr-abs(b5)
+////////////////////////////////////////////////////////////////////////
+    mv a1, a8; 
+    ld [a6]+1*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a2, a10;
+                      ld.h2l R1; add a2, 64*UPHW;               
+    ld.laddr [a0]+1;  ld.normal R0;                                  set.prec half, half, single, single, half_fixed;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(42); S1=snr(1:32)
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                              //S0=-|b2b5(1:32)|; S1=1s
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad;              set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(42); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1; rmac;              set.Smode S0abs,S1real1;                              //S0=-|b2b5(33:64)|; S1=1s
+    set.loop g1, 5;   ld.normal R0;               rmad;             
+                      ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;     
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1; loop_begin;
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad; wr.straight; set.Smode S0hword, S1r2c;                                   //AUout=b3b6(1:32)
+    st.llr8  [a2]+a5;               rd S0; rd S1; rmac;              set.Smode S0abs,S1real1;                              //store packed b3b6(1:32) to output buffer
+    ld.laddr [a0]+1;  ld.normal R0;               rmad; wr.straight;                                                             //AUout=b3b6(33:64)
+    st.llr8  [a2]+a5; ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;      loop_end;                    //store packed b3b6(33:64) to output buffer
+        
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemod64V3_Wifi, .-_qamDemod64V3_Wifi  
+
+
+    .global _qamDemod16V3_Wifi
+    .type   _qamDemod16V3_Wifi, @function
+
+_qamDemod16V3_Wifi:
+
+////////////////////////////////////////////    
+////scale the SNR vector by 1/16    
+///////////////////////////////////////////
+    ld.laddr [a1]+1;  set.prec single, half, single, single, half;  
+    clr.VRA;    
+    ld.laddr [a1]+1;    set.VRAptr rS1, 1*SIZEVEC16; 
+    mv.w [rV], g2;      ld.normal R1;
+    ld.laddr [a1]+1;                  rd S0; rd S1; rd S2; set.Smode S0hword, S1straight, S2zeros;
+    sr g1, g0,1;        ld.normal R1;                                                                    //S0=1/16; S1=snr
+    ld.laddr [a1]+1;                  rd S1; rmad; mv a4, a8; 
+    set.loop g1, 2;     ld.normal R1; 
+    ld.laddr [a1]+1;                  rd S1; rmad; 
+                        ld.normal R1; set.VRAptr rV, 3*SIZEVEC16;set.VRAptr rSt, 3;                      //auOut=1/16*snr  
+    ld.laddr [a1]+1;                  rd S1; rmad; wr.straight; loop_begin;
+    st.laddr [a3]+1;    ld.normal R1; mv a10, a2;               loop_end;
+
+////////////////////////////////////////////////////    
+////Calculate b0=snr*real(y); b2=snr*imag(y)
+////////////////////////////////////////////////////    
+    sl g3, g0, 4+UPHW;
+    mv a6, g3;
+    add a9, a8, a6;                         //a9 is the address in scratch buffer to store intermediate LLRs
+    mv a3, a9;
+    ld.laddr [a4]+1;                             set.Smode S0straight, S1r2c,S2zeros;
+    ld.laddr [a0]+1;                             set.VRAptr rS1, 0;
+                                                 set.VRArange1 rS1, 0, SIZEVEC32;
+                     ld.normal R0;               set.VRAptr rS0, SIZEVEC16;set.VRAincr rS1, SIZEVEC32;
+    ld.laddr [a0]+1; ld.normal R1;                                   set.prec half, half, single, single, half;
+                                   rd S0; rd S1; rd S2;              set.prec half, half, single, single, half_fixed;               //S0=y(1:32); S1=snr(1:32)
+    mv a5, (64)*UPHW;
+    ld.laddr [a4]+1; ld.normal R1;               rmad;               set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     set.prec half, half, single, single, half_fixed;
+    set.loop g1, 7;                                                  
+                     ld.normal R0;               rmad; mv a6, _normalization_const;                
+    ld.laddr [a0]+1; ld.normal R1;                     wr.straight;  set.prec half, half, single, single, half;       loop_begin;
+    st.laddr [a3]+1;               rd S0; rd S1;       wr.straight;  set.prec half, half, single, single, half_fixed;               //store b0b2 in HFloat to scratch buffer
+    st.llr8  [a2]+a5;                                                                                                               //store packed b0b2 to output buffer
+    ld.laddr [a4]+1; ld.normal R1;               rmad; wr.straight;  set.prec half, half, single, single, half;
+    ld.laddr [a0]+1;               rd S0; rd S1;                     
+    st.laddr [a3]+1;                                   wr.straight;  set.prec half, half, single, single, half_fixed;
+    st.llr8  [a2]+a5;ld.normal R0;               rmad;                                                                loop_end;
+
+////////////////////////////////////////////////////////////////////////    
+////Calculate b1=(2/sqrt(10))*snr-abs(b0); b3=(2/sqrt(10))*snr-abs(b2)
+//////////////////////////////////////////////////////////////////////// 
+    add a6, 6*UPHW; 
+    mv a1, a8;
+    set.VRArange1 rS1, 0, 3*SIZEVEC64;
+    set.VRArange1 rS0, SIZEVEC16, 2*SIZEVEC16;
+    set.VRAincr rS1, SIZEVEC64; set.VRAptr rS0, 1*SIZEVEC16;                                                   
+    set.VRAincr rS0, SIZEVEC16;      
+    ld [a6]+0*UPHW;   
+    ld.laddr [a1]+1;  mv a0, a9;
+    ld.laddr [a0]+1;  mv a2, a10;
+                      ld.h2l R1; add a2, 32*UPHW;               
+    ld.laddr [a0]+1;  ld.normal R0;                                  set.prec half, half, single, single, half_fixed;
+                      ld.normal R2; rd S0; rd S1;                    set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(10); S1=snr(1:32)
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1;                                    //S0=-|b0b2(1:32)|; S1=1s
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad;              set.Smode S0hword, S1r2c;                                   //S0=2/sqrt(10); S1=snr(33:64)
+    ld.laddr [a0]+1;                rd S0; rd S1; rmac;              set.Smode S0abs,S1real1;                                    //S0=-|b0b2(33:64)|; S1=1s
+    set.loop g1, 5;   ld.normal R0;               rmad;             
+                      ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;     
+    ld.laddr [a1]+1;                rd S0; rd S1;                    set.Smode S0abs,S1real1; loop_begin;
+    ld.laddr [a0]+1;  ld.normal R2; rd S0; rd S1; rmad; wr.straight; set.Smode S0hword, S1r2c;                                   //AUout=b1b3(1:32)
+    st.llr8  [a2]+a5;               rd S0; rd S1; rmac;              set.Smode S0abs,S1real1;                                    //store packed b1b3(1:32) to output buffer
+    ld.laddr [a0]+1;  ld.normal R0;               rmad; wr.straight;                                                             //AUout=b1b3(33:64)
+    st.llr8  [a2]+a5; ld.normal R2; rd S0; rd S1; rmac;              set.Smode S0hword, S1r2c;      loop_end;                    //store packed b1b3(33:64) to output buffer
+
+    rts;
+    fnop;
+    fnop;
+      .size   _qamDemod16V3_Wifi, .-_qamDemod16V3_Wifi  
+
+      
+        
+      .section .rodata
+    .type _normalization_const, @object
+    .size _normalization_const, 34 //bytes
+_normalization_const:
+    .symbol_align _h, 128 //bytes
+    .word 0x34e838e8   //0x34e8=4/sqrt(170); 0x38e8=8/sqrt(170)
+    .word 0x000030e8   //0x30e8=2/sqrt(170);
+    .word 0x34f038f0   //0x34f0=2/sqrt(42);  0x38f0=4/sqrt(42)
+    .word 0x39a8390f   //0x39a8=1/sqrt(2); 0x390f=2/sqrt(10)
+
+ 

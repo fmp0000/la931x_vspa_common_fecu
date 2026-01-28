@@ -1,0 +1,334 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors
+
+   .section   .text
+
+// =============================================================================
+//! @file           fftDIT512_sfl.sx
+//! @brief          512 pt FFT and IFFT functions using DIT   
+//! @author         NXP Semiconductors
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Subroutine name: fftDIT512_sfl/ifftDIT512_sfl
+//
+// Subroutines called by this subroutine:
+//    NONE
+//
+// ASM implementation description:
+//    Data for DIT butterflies is read into VRA. All stages are computed within the VRA 
+//      and final output is shipped off to memory.  
+//
+// Notes:
+//    NONE
+//
+// -----------------------------------------------------------------------------
+   .global  _fftDIT512_sfl
+   .type   _fftDIT512_sfl, @function
+_fftDIT512_sfl:
+#ifndef LIB_FFT_STUB
+	
+	jmp core_fftDIT512_sfl;
+   	set.nco radix2, 256, 8388608;
+   	mv a2, a1;
+
+#endif // LIB_FFT_STUB
+
+   	rts;
+   	nop;
+   	nop;
+
+   .size   _fftDIT512_sfl, .-_fftDIT512_sfl
+
+//===================================================================================
+   .global  _ifftDIT512_sfl
+   .type   _ifftDIT512_sfl, @function
+_ifftDIT512_sfl:
+#ifndef LIB_FFT_STUB
+
+	jsr core_fftDIT512_sfl;
+   	.quad ((0x0<<60) | (0x04<<54) | (0x2<<52) | (0x100<<36) | (0x1<<34) | (0x800000<<2))
+   	mv a2, _ifftDITScratchBuffer;
+   	
+   	// scale IFFT output by 1/N
+   	clr R0;
+   	mv.w [rV], 0x0000, 0x3B00;
+   	ld.laddr [a2]+1;
+   	ld.laddr [a2]+1;
+   	set.prec single, single, single, single, half_fixed;		
+   	ld.laddr [a2]+1;		ld.normal R0;	rd S0; rd S2;					set.Smode S0word, S1hlinecplx, S2zeros;
+   	ld.laddr [a2]+1;		ld.normal R0;	rd S1;
+   											rd S1;
+   	ld.laddr [a2]+1;		ld.normal R0;			cmad;					setB.VRAptr rV, 64;
+   	ld.laddr [a2]+1;		ld.normal R0;	rd S1;	cmad;					set.VRAincr rV, 32;
+   											rd S1;							set.loop 7, 6;
+   	ld.laddr [a2]+1;		ld.normal R0;			cmad;
+   	ld.laddr [a2]+1;		ld.normal R0;	rd S1;	cmad;	wr.hlinecplx;
+   											rd S1;			wr.hlinecplx;
+   	ld.laddr [a2]+1;		ld.normal R0;			cmad;											loop_begin;
+   	ld.laddr [a2]+1;		ld.normal R0;	rd S1;	cmad;	wr.hlinecplx;	setB.VRAptr rSt, 1;
+   	st.laddr [a1]+1;						rd S1;			wr.hlinecplx;	setB.VRAptr rV, 64;
+   	ld.laddr [a2]+1;		ld.normal R0;			cmad;
+   	ld.laddr [a2]+1;		ld.normal R0;	rd S1;	cmad;	wr.hlinecplx;	setB.VRAptr rSt, 2;
+   	st.laddr [a1]+1;						rd S1;			wr.hlinecplx;						   	// loop_end														
+   																			setB.VRAptr rSt, 1;
+   	st.laddr [a1]+1;										wr.hlinecplx;	setB.VRAptr rSt, 2;	rts;
+   															wr.hlinecplx;
+   	st.laddr [a1]+1;														
+
+#endif // LIB_FFT_STUB
+
+   	rts;
+   	nop;
+   	nop;
+
+   .size   _ifftDIT512_sfl, .-_ifftDIT512_sfl
+
+
+// ***************************** CORE FUNCTION *****************************
+   .type   core_fftDIT512_sfl, @function
+core_fftDIT512_sfl:
+	clr.VRA;
+	ld.laddr [a0]+1; 																	setB.VRAptr rS0, 16;			
+   	ld.laddr [a0]+1;																	set.VRAincr rS0, 32;
+   	ld.laddr [a0]+1;																	set.VRAincr rS2, 32;
+   						   	ld.h2l R0;													set.creg  15, 0xF;
+   	ld.laddr [a0]+1;		ld.l2h_h2l R0;												set.prec half, single, half, single, single;
+   	ld [a0]+0;				ld.l2h R1;  	rd S0; nco; rd S2;							set.Smode S0fft1, S2fft1;											
+   							ld.h2l R2;		rd S0; nco; rd S2;							set.VRArange1 rS2, 0, 224;								
+   							ld.l2h_h2l R2;	rd S0; nco; rd S2;	cmad.sau;				set.VRArange1 rS0, 16, 240;
+   							ld.l2h R3;		rd S0; nco; rd S2;	cmad.sau;				mvB a4, a2;
+   											rd S0; nco; rd S2;	cmad.sau;				set.VRAincr rV, 64;	
+   					   						rd S0; nco; rd S2;	cmad.sau;				mv nco_k, 128;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;	set.prec single, single, single, single, single;
+   	setA.VRAptr rS0, 32;										cmad.sau;	wr.fft1;	set.VRAincr rS0, 64;
+   	setA.VRAptr rS2, 0;											cmad.sau;	wr.fft1;	set.VRAincr rS2, 64;
+											rd S0; nco; rd S2; 				wr.fft1;	set.Smode S0fft2, S2fft2;
+   											rd S0; nco; rd S2;	 			wr.fft1;	set.loop 3, 77; 	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft1;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft1;														loop_begin;
+											rd S0; nco; rd S2;	cmad.sau;
+									   		rd S0; nco; rd S2;	cmad.sau;				mv nco_k, 64;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;	set.Smode S0fft3, S2fft3;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;	mv nco_k, 32;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;	set.Smode S0fftn, S2fftn;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;	mv nco_k, 16;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft4;
+	setA.VRAptr rS0, 64;			 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft4;	set.VRAincr rS0, 32;
+	setA.VRAptr rS2, 0;											cmad.sau; 	wr.fft4;	set.VRAincr rS2, 32;
+																cmad.sau; 	wr.fft4;	set.VRArange1 rS0, 0, 0;
+											rd S0; nco; rd S2;				wr.fft4;	set.VRArange1 rS2, 0, 0;
+	setA.VRAptr rS0, 192;					rd S0; nco; rd S2;				wr.fft4;	setB.VRAptr rS2, 128;
+   											rd S0; nco; rd S2;	cmad.sau;	wr.fft4;	set.creg  15, 0x8;
+   	setA.VRAptr rS0, 320;					rd S0; nco; rd S2;	cmad.sau;	wr.fft4;	setB.VRAptr rS2, 256;
+   											rd S0; nco; rd S2;	cmad.sau;				set.VRAincr rV, 32;
+	setA.VRAptr rS0, 448;					rd S0; nco; rd S2;	cmad.sau;				setB.VRAptr rS2, 384;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	mv nco_k, 8;
+	setA.VRAptr rS0, 128;					rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 128;
+																cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+											rd S0; nco; rd S2;				wr.fftn;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 384;
+	setA.VRAptr rS0, 384;					rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rS2, 256;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 0;
+											rd S0; nco; rd S2;	cmad.sau;				
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	mv nco_k, 4;
+	setA.VRAptr rS0, 256;					rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 128;
+																cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+																cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+																			wr.fftn;	set.VRAincr rSt, 1;
+											rd S0; nco; rd S2;				wr.fftn;	setB.VRAptr rV, 384;
+	setA.VRAptr rS0, 384;					rd S0; nco; rd S2;				wr.fftn;	setB.VRAptr rS2, 128;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 0;
+ 	setA.VRAptr rS0, 320;					rd S0; nco; rd S2;	cmad.sau;				setB.VRAptr rS2, 64;
+											rd S0; nco; rd S2;	cmad.sau;
+	setA.VRAptr rS0, 448;					rd S0; nco; rd S2;	cmad.sau;				setB.VRAptr rS2, 192;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	mv nco_k, 256;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 128;
+	st.laddr [a2]+4;											cmad.sau;	wr.fftn;	set.prec half, single, half, single, single;
+	st.laddr [a2]-3;											cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+	st.laddr [a2]+4;														wr.fftn;
+	st.laddr [a2]-3;														wr.fftn;	setB.VRAptr rV, 384;
+	st.laddr [a2]+4;														wr.fftn;
+	st.laddr [a2]-3;														wr.fftn;	
+   	st.laddr [a2]+4;																	set.creg  15, 0xC;
+   	st.laddr [a2]+1;																	clr.VRA;
+	ld.laddr [a0]+1; 																	setB.VRAptr rS0, 16;			
+   	ld.laddr [a0]+1;																	set.VRAincr rS0, 32;
+   	ld.laddr [a0]+1;																	set.VRAincr rS2, 32;
+   						   	ld.h2l R0;													
+   	ld.laddr [a0]+1;		ld.l2h_h2l R0;												
+   	ld [a0]+0;				ld.l2h R1;  	rd S0; nco; rd S2;							set.Smode S0fft1, S2fft1;											
+   							ld.h2l R2;		rd S0; nco; rd S2;							set.VRArange1 rS2, 0, 224;								
+   							ld.l2h_h2l R2;	rd S0; nco; rd S2;	cmad.sau;				set.VRArange1 rS0, 16, 240;
+   							ld.l2h R3;		rd S0; nco; rd S2;	cmad.sau;
+   											rd S0; nco; rd S2;	cmad.sau;				set.VRAincr rV, 64;	
+   					   						rd S0; nco; rd S2;	cmad.sau;				mv nco_k, 128;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft1;	set.prec single, single, single, single, single;
+   	setA.VRAptr rS0, 32;										cmad.sau;	wr.fft1;	set.VRAincr rS0, 64;
+   	setA.VRAptr rS2, 0;											cmad.sau;	wr.fft1;	set.VRAincr rS2, 64;
+											rd S0; nco; rd S2; 				wr.fft1;	set.Smode S0fft2, S2fft2;
+   											rd S0; nco; rd S2;	 			wr.fft1;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft1;														//loop_end;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft1;
+											rd S0; nco; rd S2;	cmad.sau;
+									   		rd S0; nco; rd S2;	cmad.sau;				mv nco_k, 64;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;	set.Smode S0fft3, S2fft3;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft2;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft2;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft2;	mv nco_k, 32;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;
+									 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;	set.Smode S0fftn, S2fftn;
+   											rd S0; nco; rd S2;	cmad.sau; 	wr.fft3;	
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fft3;
+									   		rd S0; nco; rd S2;	cmad.sau;	wr.fft3;	mv nco_k, 16;
+									   		rd S0; nco; rd S2;	cmad.sau; 	wr.fft4;
+	setA.VRAptr rS0, 64;			 		rd S0; nco; rd S2;	cmad.sau; 	wr.fft4;	set.VRAincr rS0, 32;
+	setA.VRAptr rS2, 0;											cmad.sau; 	wr.fft4;	set.VRAincr rS2, 32;
+																cmad.sau; 	wr.fft4;	set.VRArange1 rS0, 0, 0;
+											rd S0; nco; rd S2;				wr.fft4;	set.VRArange1 rS2, 0, 0;
+	setA.VRAptr rS0, 192;					rd S0; nco; rd S2;				wr.fft4;	setB.VRAptr rS2, 128;
+   											rd S0; nco; rd S2;	cmad.sau;	wr.fft4;	set.creg  15, 0x8;
+   	setA.VRAptr rS0, 320;					rd S0; nco; rd S2;	cmad.sau;	wr.fft4;	setB.VRAptr rS2, 256;
+   											rd S0; nco; rd S2;	cmad.sau;				set.VRAincr rV, 32;
+	setA.VRAptr rS0, 448;					rd S0; nco; rd S2;	cmad.sau;				setB.VRAptr rS2, 384;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	mv nco_k, 8;
+	setA.VRAptr rS0, 128;					rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 128;
+																cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+											rd S0; nco; rd S2;				wr.fftn;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 384;
+	setA.VRAptr rS0, 384;					rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rS2, 256;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 0;
+											rd S0; nco; rd S2;	cmad.sau;				
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	mv nco_k, 4;
+	setA.VRAptr rS0, 256;					rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 128;
+																cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+																cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+																			wr.fftn;	set.VRAincr rSt, 1;
+											rd S0; nco; rd S2;				wr.fftn;	setB.VRAptr rV, 384;
+	setA.VRAptr rS0, 384;					rd S0; nco; rd S2;				wr.fftn;	setB.VRAptr rS2, 128;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 0;
+ 	setA.VRAptr rS0, 320;					rd S0; nco; rd S2;	cmad.sau;				setB.VRAptr rS2, 64;
+											rd S0; nco; rd S2;	cmad.sau;				set.loop 15, 4;
+	setA.VRAptr rS0, 448;					rd S0; nco; rd S2;	cmad.sau;				setB.VRAptr rS2, 192;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	mv nco_k, 2;
+											rd S0; nco; rd S2;	cmad.sau;	wr.fftn;	setB.VRAptr rV, 128;
+	st.laddr [a2]+4;											cmad.sau;	wr.fftn;
+	st.laddr [a2]-3;											cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+	st.laddr [a2]+4;														wr.fftn;
+	st.laddr [a2]-3;														wr.fftn;	setB.VRAptr rV, 384;
+	st.laddr [a2]+4;														wr.fftn;	mvB a0, a4;
+	st.laddr [a2]-3;														wr.fftn;	
+   	st.laddr [a2]+4;																	
+   	st.laddr [a2]-31;						clr.VRA;
+   	
+   	
+	ld.laddr [a0]+8;																	set.VRAincr rS0, 32;	
+   	ld.laddr [a0]-7;																	set.VRAincr rS2, 32;
+																						set.VRArange1 rSt, 4, 5;	
+							ld.normal R0;												set.VRAincr rSt, 1;	
+	ld.laddr [a0]+8;		ld.normal R1;												setB.VRAptr rS0, 64;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;							set.VRAincr rV, 32;							
+											rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+							ld.normal R0;						cmad.sau;				setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;				setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;							setB.VRAptr rSt, 4;
+											rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+							ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;		
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]+1;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;		
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]+1;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;	
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-7;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+8;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-31;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;	
+	ld.laddr [a0]+16;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-15;						rd S0; nco; rd S2;							mv nco_k, 1;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+16;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-15;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-7;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;	
+	ld.laddr [a0]+16;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;
+   	ld.laddr [a0]-15;						rd S0; nco; rd S2;
+	st.laddr [a2]+8;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-31;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;
+	ld.laddr [a0]+16;		ld.normal R1;						cmad.sau;	wr.fftn;	setB.VRAptr rV, 256;	loop_begin;
+   	ld.laddr [a0]-15;						rd S0; nco; rd S2;
+	st.laddr [a2]+16;						rd S0; nco; rd S2;							setB.VRAptr rS0, 64;
+	st.laddr [a2]-15;		ld.normal R0;						cmad.sau;	wr.fftn;	setB.VRAptr rS2, 0;		// loop_end
+																			wr.fftn;							rts;	
+	st.laddr [a2]+16;																	set.creg  15, 0xA;
+	st.laddr [a2]-31;																	clr.VRA;	
+   	
+   .size   core_fftDIT512_sfl, .-core_fftDIT512_sfl
+// end
+//

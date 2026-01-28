@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           chp_chf_csp_vmult_asm.sx
+//! @brief          y = x*a where x is a complex vector, a is complex scalar,
+//!                 y is complex. 
+//! @author         NXP Semiconductors
+// =============================================================================
+
+#include "vspa.h"
+
+    .section .text
+
+// =============================================================================
+    .global _chp_chp_csp_vMultiSclr
+    .type _chp_chp_csp_vMultiSclr, @function
+_chp_chp_csp_vMultiSclr:    
+							    ld [a2]+1;			clr.VRA;    
+	set.VRAincr rS1, 32;	    ld.laddr [a1]+1;
+	setB.VRAptr rS0, 128;	    ld.laddr [a1]+1;
+							    					ld.h2l R2;		set.prec single, half, half, single, half; 
+							    ld.laddr [a1]+1;	ld.h2l R0;		set.Smode S0word, S1hlinecplx, S2zeros;
+	set.VRArange1 rS1, 0, 96;						ld.l2h_h2l R0;
+								ld.laddr [a1]+1;					rd S0; rd S1; rd S2;
+	set.VRArange1 rV, 256, 480;						ld.h2l_l2h R0;	rd S1;
+	set.VRAincr rV, 32;			ld.laddr [a1]+1;					rd S1;	cmad;
+	set.VRArange1 rSt, 4, 7;						ld.l2h_h2l R0;	rd S1;	cmad;
+	setB.VRAptr rV, 256;		ld.laddr [a1]+1;					rd S1;	cmad;
+	set.loop g0, 4;									ld.h2l_l2h R0;	rd S1;	cmad;
+								ld.laddr [a1]+1;					rd S1;	cmad;	wr.hlinecplx;
+	set.VRAincr rSt, 1;			setA.VRAptr rSt, 4;	ld.l2h_h2l R0;	rd S1;	cmad;	wr.hlinecplx;
+								ld.laddr [a1]+1;					rd S1;	cmad;	wr.hlinecplx;	loop_begin;
+								st.laddr [a0]+1;	ld.h2l_l2h R0;	rd S1;	cmad;	wr.hlinecplx;
+								ld.laddr [a1]+1;					rd S1;	cmad;	wr.hlinecplx;
+								st.laddr [a0]+1;	ld.l2h_h2l R0;	rd S1;	cmad;	wr.hlinecplx;	loop_end;
+						                       
+    rts;
+    fnop;
+    fnop;        
+// =============================================================================
+	.size _chp_chp_csp_vMultiSclr, .-_chp_chp_csp_vMultiSclr

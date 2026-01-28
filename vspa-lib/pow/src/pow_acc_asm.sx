@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2022 - 2025  NXP
+
+
+#include "vspa.h"
+
+//	void pow_acc_asm(void* sample_in, void *acc_inout, unsigned int nL)
+//  sample_in: half fixed
+//  acc_inout: float, initialized to all 0 at the beggining, contains 32 power values
+//  nL: number of input sample lines
+
+    .section .text
+    .global _pow_acc_asm
+    .type _pow_acc_asm, @function
+    .size _pow_acc_asm, _pow_acc_asm_end - _pow_acc_asm    
+_pow_acc_asm:    
+    clr.VRA;														
+    																sub g0,1
+    																set.loop g0,1
+    ld [a1]+0;														set.VRAptr rS2,64
+    ld.laddr [a0]+1;												set.prec half_fixed,half_fixed,single,single,single;
+    ld.laddr [a0]+1;												set.smode S0straight,S1straight,S2hlinecplx;
+    ld.laddr [a0]+1;	ld.normal R1;
+    ld.laddr [a0]+1;	ld.normal R0;
+    ld.laddr [a0]+1;	ld.normal R0;	rd S0;rd S1;rd S2;
+    ld.laddr [a0]+1;	ld.normal R0;	rd S0;rd S1;			
+    ld.laddr [a0]+1;	ld.normal R0;	rd S0;rd S1;		cmad;
+    ld.laddr [a0]+1;	ld.normal R0;	rd S0;rd S1;		cmac;	loop_begin;loop_end;
+    nop;
+    nop;
+    rts;
+    																wr.even;
+    																	st [a1]+0;
+_pow_acc_asm_end:
+
+
+//float pow_sum_asm(void* acc_in, unsigned int num_points)
+//in: pointer to acc_inout used in _pow_acc_asm()
+//num_points: num of points in acc_inout
+//return value: accumulation of all points. input is float, output is float.
+    .global _pow_sum_asm
+    .type _pow_sum_asm, @function
+    .size _pow_sum_asm, F_pow_sum_asm_end - _pow_sum_asm    
+_pow_sum_asm:    
+    clr.VRA;														
+    														set.loop g0,1
+    ld [a0]+UPHW*2;											clr.au
+    ld [a0]+UPHW*2;											set.prec single,single,single,single,single;
+    ld [a0]+UPHW*2;											set.smode S0hword,S1real1,S2zeros;
+    ld [a0]+UPHW*2;	ld.h2l R0;
+    ld [a0]+UPHW*2;	ld.h2l R0;	rd S0;rd S1;rd S2;
+    ld [a0]+UPHW*2;	ld.h2l R0;	rd S0;	
+    ld [a0]+UPHW*2;	ld.h2l R0;	rd S0;				rmac;	loop_begin;loop_end;
+    nop;
+    nop;
+	nop; 
+    rts;															wr.straight;
+    																	mv.w g0,[rs0];
+    																	nop;
+F_pow_sum_asm_end:
+

@@ -1,0 +1,668 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           decimator_asm.sx
+//! @brief          FIR decimation ASSEMBLY source file
+//! @author         NXP Semiconductors.
+//!
+//!  The decimator.sx implements the decimator kernels in assembly code.
+// =============================================================================
+#include "vspa.h"
+#include "decimator.h"
+
+#define LOOP_CNT       DECIM_FLT_LEN/2-7        // Inner loop counter: 2 filter coefficients per iteration, 7 iterations outside of loop
+#define INP_PTR_OFF    -(DECIM_FLT_LEN-1)*2     // Input pointer offset: pointer will be modified to point to start of input history
+#define MEM_PTR_OFF    (32-DECIM_FLT_LEN+1)*2   // Pointer offset used for persistent memory LOAD/STORE pointer and for scratch LOAD pointer
+
+// -----------------------------------------------------------------------------
+// General description:
+//
+//  VRA layout:
+//  {R0,R1} - 1st input buffer: 1 line (32 complex half-fixed samples) of input elements + 1 line for rotation
+//  {R2,R3} - 2nd input buffer: 1 line (32 complex half-fixed samples) of input elements + 1 line for rotation
+//  {R4}    - filter coefficients (max 32 real single precision samples)
+//  {R6}    - 1 output line (32 complex half-fixed samples)
+//
+//  Implementation description (2x decimator):
+//    Main iteration:
+//       - loads 2 x 2 input lines (current data + history) double buffered in {R0,R1} and {R2,R3} pairs of registers
+//       - computes one output line (R6) consisting of 32 complex half-fixed samples and stores to memory
+//    Innermost iteration:
+//       - loads 2 input lines (current data + history) which are rotated for each filter coefficient
+//       - computes one half of output line (16 complex half-fixed samples)
+//    Decimators of 4x and 8x are implemented as cascaded 2x decimators inside assembly code to avoid function 
+//    calling overhead.
+//       
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Subroutine name: decimator_2x_32hf
+//
+// ABI:
+//  a0 - input pointer within the input circular buffer
+//  a1 - output pointer
+//  a2 - input circular buffer start address
+//  g0 - input circular buffer size (in half-words)  
+//
+// Registers usage:
+//  a4 - filter buffer pointer
+//       
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _decimator_2x_32hf
+    .type _decimator_2x_32hf, @function
+    .size _decimator_2x_32hf, _decimator_2x_32hf_end -_decimator_2x_32hf
+_decimator_2x_32hf:
+    
+    mv a4,_DECIM_FLT_BUFF;         
+    set.range a0,a2,g0;
+    add a0,a0,(INP_PTR_OFF)*UPHW;
+
+    ld.laddr [a4]+0;                                                                
+    ld.laddr [a0]+1;                                                             setB.creg 255, 0;
+    ld.laddr [a0]+0;                                                             clr.VRA;
+                        ld.normal R4;                                            set.VRAincr rS0,4;
+                        ld.h2l R0;                                               set.VRAincr  rV,32;    
+                        ld.l2h_h2l R0;                                           setA.VRAptr rS0,4*64;    set.prec single, half_fixed, half_fixed, single, half_fixed; 
+                                                                                 setA.VRAptr rSt,6;       set.Smode S0i1r1i1r1, S1i2i1r2r1, S2zeros;
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1; rd S2;             set.rot R0R1r4;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;                                                               
+                                          ror;  rd S0; rd S1;           cmad;
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                           
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;                                                       
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;                              
+                                          ror;  rd S0; rd S1;           cmac;                                                                                 
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+                                          ror;  rd S0; rd S1;           cmac;                                                       
+                                          ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    
+                                                                        cmac;                                          
+                                                                        cmac;                                                          
+                                                                                 mv a0,0;
+                                                                                 set.range a0,a0,0;
+                                          rts;   
+                                                                                 wr.hlinecplx;                                                                  
+    st.laddr [a1]+0;                                         
+
+_decimator_2x_32hf_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: decimator_2x_x32hf
+//
+// ABI:
+//  a0 - input pointer within the input circular buffer
+//  a1 - output pointer
+//  a2 - input circular buffer start address
+//  g0 - input circular buffer size (in half-words)  
+//  g1 - number of output lines
+//
+// Registers usage:
+//  a4 - filter buffer pointer
+//  g1 - number of main iterations = num_out_lines - 1
+//       
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _decimator_2x_x32hf
+    .type _decimator_2x_x32hf, @function
+    .size _decimator_2x_x32hf, _decimator_2x_x32hf_end -_decimator_2x_x32hf
+_decimator_2x_x32hf:
+    
+    mv a4,_DECIM_FLT_BUFF;         
+    set.range a0,a2,g0;
+    add a0,a0,(INP_PTR_OFF)*UPHW;
+
+    ld.laddr [a4]+0;                                                                
+    ld.laddr [a0]+1;                                                             setB.creg 255, 0;
+    ld.laddr [a0]+0;                                                             clr.VRA;
+                        ld.normal R4;                                            set.VRAincr rS0,4;
+                        ld.h2l R0;                                               set.VRAincr  rV,32;    
+                        ld.l2h_h2l R0;                                           setA.VRAptr rS0,4*64;    set.prec single, half_fixed, half_fixed, single, half_fixed; 
+                                                                                 setA.VRAptr rSt,6;       set.Smode S0i1r1i1r1, S1i2i1r2r1, S2zeros;
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1; rd S2;             set.rot R0R1r4;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;                                                               
+                                          ror;  rd S0; rd S1;           cmad;
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                           
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;                                                       subS.z g1,1;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;                              
+                                          ror;  rd S0; rd S1;           cmac;                                                       set.loop g1,16;                           
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                       loop_begin;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                             
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                   
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a1]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                    loop_end;
+                                          ror;  rd S0; rd S1;           cmac;                               
+                                          ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;                                                          
+                                                                        cmac;                             
+                                                                        cmac;
+                                                                                 mv a0,0;
+                                                                                 set.range a0,a0,0;
+                                          rts;                 
+                                                                                 wr.hlinecplx;                             
+    st.laddr [a1]+0;
+
+_decimator_2x_x32hf_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: decimator_4x_32hf
+//
+// ABI:
+//  a0 - input pointer within the input circular buffer
+//  a1 - output pointer
+//  a2 - input circular buffer start address
+//  a3 - persistent buffer pointer (intermediate stages history)
+//  g0 - input circular buffer size (in half-words)  
+//
+// Registers usage:
+//  a4 - filter buffer pointer
+//  a5 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for STORE
+//  a7 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for LOAD
+//       
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _decimator_4x_32hf
+    .type _decimator_4x_32hf, @function
+    .size _decimator_4x_32hf, _decimator_4x_32hf_end -_decimator_4x_32hf
+_decimator_4x_32hf:
+
+    mv a5,_DECIM_4X_SCRATCH_MEM; 
+    mv a7,_DECIM_4X_SCRATCH_MEM+MEM_PTR_OFF;
+    add a3,a3,(MEM_PTR_OFF)*UPHW;
+    
+    mv a4,_DECIM_FLT_BUFF;
+    set.range a0,a2,g0;
+    add a0,a0,(INP_PTR_OFF)*UPHW;
+    
+    ld.laddr [a4]+0;                                                             setB.creg 255, 0;
+    ld.laddr [a0]+1;                                                             clr.VRA;
+    ld.laddr [a0]+0;                                                             set.VRAincr rS0,4;
+                        ld.normal R4;                                            set.VRAincr  rV,32;
+                        ld.h2l R0;                                                                                                
+                        ld.l2h_h2l R0;                                           setA.VRAptr rS0,4*64;    set.prec single, half_fixed, half_fixed, single, half_fixed;   
+                                                                                 setA.VRAptr rSt,6;       set.Smode S0i1r1i1r1, S1i2i1r2r1, S2zeros;                    
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1; rd S2;             set.rot R0R1r4;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;                                                               
+                                          ror;  rd S0; rd S1;           cmad;
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                           
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;                                                       
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;                              
+                                          ror;  rd S0; rd S1;           cmac;                                                                                 
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                       
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                             
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                            
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a5]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                         
+    ld.laddr [a3]+0;                      ror;  rd S0; rd S1;           cmac;                                                                        
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;                                                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;                                                      
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                         
+                                          ror;  rd S0; rd S1;           cmac;                                                              
+                                          ror;  rd S0; rd S1;           cmad;               
+                                          ror;  rd S0; rd S1;           cmac;                                  
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;       
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                            
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;      
+    st.laddr [a5]+0;                            rd S0; rd S1;           cmac;                                                                               
+    ld.laddr [a7]+1;                                                    cmac;        
+    ld.laddr [a7]+0;                                                    cmac;                                                              
+    st.laddr [a3]+0;
+                        ld.h2l R2;                  
+                        ld.l2h_h2l R2;                                           setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;
+                                          ror;  rd S0; rd S1;                    set.rot R2R3r4;
+                                          ror;  rd S0; rd S1;                                          
+                                          ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                             
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;                                                          
+                                                                        cmac;                             
+                                                                        cmac;
+                                                                                 mv a0,0;   
+                                                                                 set.range a0,a0,0;
+                                          rts;                                               
+                                                                                 wr.hlinecplx;                    
+    st.laddr [a1]+0;    
+    
+_decimator_4x_32hf_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: decimator_4x_x32hf
+//
+// ABI:
+//  a0 - input pointer within the input circular buffer
+//  a1 - output pointer
+//  a2 - input circular buffer start address
+//  a3 - persistent buffer pointer (intermediate stages history)
+//  g0 - input circular buffer size (in half-words)  
+//  g1 - number of output lines
+//
+// Registers usage:
+//  a4 - filter buffer pointer
+//  a5 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for STORE
+//  a7 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for LOAD
+//  g1 - number of main iterations for 2nd 2x decimator = 1 * num_out_lines - 1
+//  g2 - number of main iterations for 1st 2x decimator = 2 * num_out_lines - 1
+//       
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _decimator_4x_x32hf
+    .type _decimator_4x_x32hf, @function
+    .size _decimator_4x_x32hf, _decimator_4x_x32hf_end -_decimator_4x_x32hf
+_decimator_4x_x32hf:
+
+    mv a5,_DECIM_4X_SCRATCH_MEM; 
+    mv a7,_DECIM_4X_SCRATCH_MEM+MEM_PTR_OFF;
+    add a3,a3,(MEM_PTR_OFF)*UPHW;
+    
+    mv a4,_DECIM_FLT_BUFF;
+    set.range a0,a2,g0;
+    add a0,a0,(INP_PTR_OFF)*UPHW;
+    
+    ld.laddr [a4]+0;                                                             setB.creg 255, 0;
+    ld.laddr [a0]+1;                                                             clr.VRA;
+    ld.laddr [a0]+0;                                                             set.VRAincr rS0,4;
+                        ld.normal R4;                                            set.VRAincr  rV,32;
+                        ld.h2l R0;                                                                                                  sl g2,g1,1;
+                        ld.l2h_h2l R0;                                           setA.VRAptr rS0,4*64;    set.prec single, half_fixed, half_fixed, single, half_fixed;   
+                                                                                 setA.VRAptr rSt,6;       set.Smode S0i1r1i1r1, S1i2i1r2r1, S2zeros;                    
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1; rd S2;             set.rot R0R1r4;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;                                                               
+                                          ror;  rd S0; rd S1;           cmad;
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                           
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;                                                       subS.z g2,1;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;                              
+                                          ror;  rd S0; rd S1;           cmac;                                                       set.loop g2,16;                           
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                       loop_begin;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                             
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                   
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a5]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                    loop_end;
+    ld.laddr [a3]+0;                      ror;  rd S0; rd S1;           cmac;                                                       
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;                                                      
+                                                                        cmac;    set.rot R0R1r4;                         
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;                                             
+                                          ror;  rd S0; rd S1;           cmad;                                  
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                      subS.z g1,1;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;      
+                                          ror;  rd S0; rd S1;           cmac;                                                       set.loop g1,16;                           
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a5]+0;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;                                                       loop_begin;
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                             
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                   
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a1]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                    loop_end;
+                                          ror;  rd S0; rd S1;           cmac;                               
+                                          ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;                                                          
+                                                                        cmac;                             
+    ld.laddr [a5]+0;                                                    cmac;
+                                                                                 mv a0,0;   
+                                                                                 set.range a0,a0,0;
+                        ld.normal R0;                  rts;                                               setB.VRAptr rSt,0;
+    st.laddr [a3]+0;                                                             wr.hlinecplx;            setB.VRAptr rSt,6;               
+    st.laddr [a1]+0;    
+    
+_decimator_4x_x32hf_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: decimator_8x_32hf
+//
+// ABI:
+//  a0 - input pointer within the input circular buffer
+//  a1 - output pointer
+//  a2 - input circular buffer start address
+//  a3 - persistent buffer pointer (intermediate stages history)
+//  g0 - input circular buffer size (in half-words)  
+//
+// Registers usage:
+//  a4 - filter buffer pointer
+//  a5 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for STORE
+//  a6 - scratch buffer pointer for intermediate stage 2 (current output of 2nd 2x decimator) - used for STORE
+//  a7 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for LOAD
+//  a8 - scratch buffer pointer for intermediate stage 2 (current output of 2nd 2x decimator) - used for LOAD
+//       
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _decimator_8x_32hf
+    .type _decimator_8x_32hf, @function
+    .size _decimator_8x_32hf, _decimator_8x_32hf_end -_decimator_8x_32hf
+_decimator_8x_32hf:
+    
+    mv a5,_DECIM_8X_SCRATCH_MEM;
+    mv a7,_DECIM_8X_SCRATCH_MEM+MEM_PTR_OFF;
+    add a3,a3,(MEM_PTR_OFF)*UPHW;
+
+    mv a4,_DECIM_FLT_BUFF;
+    set.range a0,a2,g0;
+    add a0,a0,(INP_PTR_OFF)*UPHW;
+    
+    ld.laddr [a4]+0;                                                             setB.creg 255, 0;
+    ld.laddr [a0]+1;                                                             clr.VRA;
+    ld.laddr [a0]+0;                                                             set.VRAincr rS0,4;
+                        ld.normal R4;                                            set.VRAincr  rV,32;
+                        ld.h2l R0;                                                                                                   
+                        ld.l2h_h2l R0;                                           setA.VRAptr rS0,4*64;    set.prec single, half_fixed, half_fixed, single, half_fixed; 
+                                                                                 setA.VRAptr rSt,6;       set.Smode S0i1r1i1r1, S1i2i1r2r1, S2zeros;
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1; rd S2;             set.rot R0R1r4;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;                                                                       mvB a6,a5;     
+                                          ror;  rd S0; rd S1;           cmad;                                                       mvB a8,a7;
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                           
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;                                                        
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;                              
+                                          ror;  rd S0; rd S1;           cmac;                                                       set.loop 3,16;                           
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                       loop_begin;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                                                       
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                      
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a5]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                    loop_end;
+    ld.laddr [a3]+0;                      ror;  rd S0; rd S1;           cmac;                                                       
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                       
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;                                                      
+                                                                        cmac;    set.rot R0R1r4;                         
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;                                                            
+                                          ror;  rd S0; rd S1;           cmad;                                  
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                       
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                          ror;  rd S0; rd S1;           cmac;                                                                                  
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a5]+0;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;                                                        
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+    st.laddr [a3]+1;                      ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                             
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                   
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a6]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                     
+    ld.laddr [a3]+0;                      ror;  rd S0; rd S1;           cmac;                                                       
+    ld.laddr [a8]+0;                      ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;                                                      
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;              
+                                          ror;  rd S0; rd S1;           cmac;
+                                          ror;  rd S0; rd S1;           cmad;                   
+                                          ror;  rd S0; rd S1;           cmac;                                  
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                 
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                       
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end; 
+    st.laddr [a6]+0;                            rd S0; rd S1;           cmac;                                                                                
+    ld.laddr [a8]+1;                                                    cmac;        
+    ld.laddr [a8]+0;                                                    cmac;    
+    st.laddr [a3]+0;                      
+                        ld.h2l R2;                  
+                        ld.l2h_h2l R2;                                           setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;
+                                          ror;  rd S0; rd S1;                    set.rot R2R3r4;                                 
+                                          ror;  rd S0; rd S1;                                          
+                                          ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;                                 
+                                                                        cmac;                             
+                                                                        cmac;
+                                                                                 mv a0,0;                
+                                                                                 set.range a0,a0,0;                          
+                                          rts;                                                                    
+                                                                                 wr.hlinecplx;                                
+    st.laddr [a1]+0;
+    
+_decimator_8x_32hf_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: decimator_8x_x32hf
+//
+// ABI:
+//  a0 - input pointer within the input circular buffer
+//  a1 - output pointer
+//  a2 - input circular buffer start address
+//  a3 - persistent buffer pointer (intermediate stages history)
+//  g0 - input circular buffer size (in half-words)  
+//  g1 - number of output lines
+//
+// Registers usage:
+//  a4 - filter buffer pointer
+//  a5 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for STORE
+//  a6 - scratch buffer pointer for intermediate stage 2 (current output of 2nd 2x decimator) - used for STORE
+//  a7 - scratch buffer pointer for intermediate stage 1 (current output of 1st 2x decimator) - used for LOAD
+//  a8 - scratch buffer pointer for intermediate stage 2 (current output of 2nd 2x decimator) - used for LOAD
+//  g1 - number of main iterations for 3rd 2x decimator = 1 * num_out_lines - 1
+//  g2 - number of main iterations for 2nd 2x decimator = 2 * num_out_lines - 1
+//  g3 - number of main iterations for 1st 2x decimator = 4 * num_out_lines - 1
+//       
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _decimator_8x_x32hf
+    .type _decimator_8x_x32hf, @function
+    .size _decimator_8x_x32hf, _decimator_8x_x32hf_end -_decimator_8x_x32hf
+_decimator_8x_x32hf:
+    
+    mv a5,_DECIM_8X_SCRATCH_MEM;
+    mv a7,_DECIM_8X_SCRATCH_MEM+MEM_PTR_OFF;
+    add a3,a3,(MEM_PTR_OFF)*UPHW;
+
+    mv a4,_DECIM_FLT_BUFF;
+    set.range a0,a2,g0;
+    add a0,a0,(INP_PTR_OFF)*UPHW;
+
+    ld.laddr [a4]+0;                                                             setB.creg 255, 0;
+    ld.laddr [a0]+1;                                                             clr.VRA;
+    ld.laddr [a0]+0;                                                             set.VRAincr rS0,4;
+                        ld.normal R4;                                            set.VRAincr  rV,32;
+                        ld.h2l R0;                                                                                                  sl g3,g1,2;
+                        ld.l2h_h2l R0;                                           setA.VRAptr rS0,4*64;    set.prec single, half_fixed, half_fixed, single, half_fixed; 
+                                                                                 setA.VRAptr rSt,6;       set.Smode S0i1r1i1r1, S1i2i1r2r1, S2zeros;
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1; rd S2;             set.rot R0R1r4;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;                                                                       mvB a6,a5;     
+                                          ror;  rd S0; rd S1;           cmad;                                                       mvB a8,a7;
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                           
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;                                                       subS.z g3,1;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;                              
+                                          ror;  rd S0; rd S1;           cmac;                                                       set.loop g3,16;                           
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                       loop_begin;
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a0]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a0]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                                                       
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                      
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a5]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                    loop_end;
+    ld.laddr [a3]+1;                      ror;  rd S0; rd S1;           cmac;                                                       
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                      sl g2,g1,1;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;                                                      
+                                                                        cmac;    set.rot R0R1r4;                         
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;                                                            
+                                          ror;  rd S0; rd S1;           cmad;                                  
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                      subS.z g2,1;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                          ror;  rd S0; rd S1;           cmac;                                                       set.loop g2,16;                           
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a5]+0;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;                                                       loop_begin;
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a7]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a7]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                             
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                   
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a6]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                    loop_end;
+    ld.laddr [a3]-1;                      ror;  rd S0; rd S1;           cmac;                                                       
+    ld.laddr [a8]+0;                      ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;                                                      
+                                                                        cmac;    set.rot R0R1r4;              
+    ld.laddr [a8]+1;                      ror;  rd S0; rd S1;           cmac;
+    ld.laddr [a8]+0;                      ror;  rd S0; rd S1;                                                 
+                                          ror;  rd S0; rd S1;           cmad;                                  
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;                 
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                                      subS.z g1,1;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end; 
+                                          ror;  rd S0; rd S1;           cmac;                                                       set.loop g1,16;                           
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a6]+0;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                        
+    ld.laddr [a8]+1;                      ror;  rd S0; rd S1;           cmac;                                                       loop_begin;
+    ld.laddr [a8]+0;                      ror;  rd S0; rd S1;           cmad;                                                         
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                         
+                        ld.h2l R0;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R0;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                    
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,0*64;    
+                                          ror;  rd S0; rd S1;           cmac;    set.rot R0R1r4;                                        
+    ld.laddr [a8]+1;                      ror;  rd S0; rd S1;           cmac;                                                         
+    ld.laddr [a8]+0;                      ror;  rd S0; rd S1;           cmad;
+                                          ror;  rd S0; rd S1;           cmac;                             
+                        ld.h2l R2;        ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;
+                        ld.l2h_h2l R2;    ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;                   
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;    
+                                                rd S0; rd S1;           cmac;    setA.VRAptr rS0,4*64;    setB.VRAptr rS1,2*64;    
+    st.laddr [a1]+1;                      ror;  rd S0; rd S1;           cmac;    set.rot R2R3r4;                                    loop_end;
+                                          ror;  rd S0; rd S1;           cmac;                               
+                                          ror;  rd S0; rd S1;           cmad;                             
+                                          ror;  rd S0; rd S1;           cmac;    setB.VRAptr  rV,6*64;                           
+                                          ror;  rd S0; rd S1;           cmac;                             set.loop LOOP_CNT,1;              
+                                          ror;  rd S0; rd S1;           cmac;    wr.hlinecplx;
+                                          ror;  rd S0; rd S1;           cmac;                             loop_begin;  loop_end;               
+                                                rd S0; rd S1;           cmac;    mv a0,0;                             
+    ld.laddr [a5]+0;                                                    cmac;                             
+    ld.laddr [a6]+0;                                                    cmac;
+                                                                                 set.range a0,a0,0;                 
+                        ld.normal R0;                                                                     setB.VRAptr rSt,0; 
+    st.laddr [a3]+1;    ld.normal R2;     rts;                                                            setB.VRAptr rSt,2;         
+    st.laddr [a3]+0;                                                             wr.hlinecplx;            setB.VRAptr rSt,6;                     
+    st.laddr [a1]+0;
+    
+_decimator_8x_x32hf_end:

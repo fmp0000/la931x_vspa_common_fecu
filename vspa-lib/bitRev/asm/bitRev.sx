@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors All rights reserved
+
+// =============================================================================
+//! @file           bitRev64.sx
+//! @brief          IPPU procedure to perfrom shiftting and bit-reversal of 64 
+//!                 sub-carriers. 
+//! @author         NXP Semiconductors.
+// =============================================================================
+// bitRev64.sx -- IPPU procedure to perfrom shiftting and bit-reversal of 64
+//                sub-carriers.
+//
+// bitRev64(
+//     vspa_complex_float16 *pOut,
+//     vspa_complex_float16 const *pIn );
+//
+// arg0: pOut       = pointer to the linear output buffer.
+// arg1: pIn        = pointer to bit-reversed input buffer.
+//
+// =============================================================================
+
+    .ippu
+    .global     _ippu_args
+    .type       _ippu_args, %object
+    .icomm      _ippu_args,  (2 * 4)
+
+    .section    .itext
+    .global     _bitRev
+    .type       _bitRev, %function
+
+_bitRev:
+
+    
+    // -------------------------------------------------------------------------
+    // Load input arguments:
+    // -------------------------------------------------------------------------
+    ld      as2, +2;                          // Load mask address
+    ld      as1, +0;                          // Load output buffer address.
+    ld      as0, +1;                          // Load input buffer address.
+    nop;
+    nop;
+    mv a0, as2;
+    
+    ld.mask.vcpu  [a0]+0;   // load mask for compare
+    mv elem_mask_ptr, 3;    // pointer to compare bit 3 in mask register
+    mv a0, as0; 
+    mv a1, as1;           
+
+    cmp.bit -1;             // compare for bit3
+    jmp.nz fft_1024;        // if bit3 = 1; goto fft_1024
+    nop;
+    cmp.bit -1;             // compare for bit2
+    jmp.nz fft_256;         // if bit2 = 1; goto fft_256
+    nop;
+    cmp.bit -1;             // compare for bit1
+    jmp.nz fft_128;         // if bit1 = 1; goto fft_128
+    nop;
+
+fft_64:    
+    mv as3, 0;
+    jmp codestart;
+    set.range a1, as1, 128;
+    set.br a1, fft64;
+    
+   
+fft_1024:    
+    mv as3, 15;
+    jmp codestart;
+    set.range a1, as1, 2048;
+    set.br a1, fft1024;
+    
+fft_256:
+    mv as3, 3;
+    jmp codestart;
+    set.range a1, as1, 512;
+    set.br a1, fft256;
+
+fft_128:
+    mv as3, 1;
+    jmp codestart;
+    set.range a1, as1, 256;
+    set.br a1, fft128;
+    
+    
+    
+codestart:    
+    // -------------------------------------------------------------------------
+    // Initialize core registers:
+    // -------------------------------------------------------------------------
+    mv      mem_elem_rd_ptr, 0;              // Reset memory read pointer.
+    mv      mem_elem_wr_ptr, 0;              // Reset memory write pointer.
+    mv      r_wr_ptr, 255;                   // Reset register write pointer.(point to last addressable element to taggle between R0 and R1)
+    mv      r_rd_ptr, 0;                     // Reset register read pointer.
+    
+   // --------------------------------------------------------------------------
+   // bit-reversal
+   // --------------------------------------------------------------------------
+    ld.vcpu [a1]+2, 0, normal, 0, normal;       // dummy load to offset the output pointer.
+    set.loop 1, as3;
+    mv m0, 64;
+    nop;
+    ld.vcpu [a0]+m0,  0, normal, +1, normal;            loop_begin 1;       // load to R0
+    ld.vcpu [a0]+m0,  0, normal, -1, normal;                                // load to R1
+    set.loop 0, 31;
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;
+    st.vcpu [a1]-2, 0, br, +8, e32;
+    st.vcpu [a1]+6, 0, br, +8, e32;                      loop_end 1;
+    mv as1, 0;
+    set.range a1, as1, 0;
+    done;
+    nop;
+    nop; 
+
+    .size       _bitRev, . - _bitRev

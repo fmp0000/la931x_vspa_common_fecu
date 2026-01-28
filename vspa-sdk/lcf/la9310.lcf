@@ -1,0 +1,125 @@
+// =============================================================================
+//! @file       la9310.lcf
+//! @brief      LA9310 VSPA linker command file.
+//! @author     NXP Semiconductors.
+//! @copyright  Copyright (C) 2023 NXP Semiconductors.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Hardware memory sizes:
+// -----------------------------------------------------------------------------
+SIZE_VCPU_PRAM = 1024 * 32;                // 32 KiB.
+SIZE_VCPU_DRAM = 1024 * 16;                // 16 KiB.
+SIZE_IPPU_PRAM = 1024 * 2;                 // 2 KiB.
+SIZE_IPPU_DRAM = 1024 * 16;                // 16 KiB.
+
+SIZE_VSPA_DRAM = SIZE_VCPU_DRAM + SIZE_IPPU_DRAM;
+
+// -----------------------------------------------------------------------------
+// Hardware memory bases:
+// -----------------------------------------------------------------------------
+BASE_VCPU_PRAM = 0x00000000;
+BASE_IPPU_PRAM = 0x00000000;
+BASE_VCPU_DRAM = 0x00000000;
+BASE_IPPU_DRAM = SIZE_VCPU_DRAM;
+BASE_VSPA_DRAM = BASE_VCPU_DRAM;
+
+// -----------------------------------------------------------------------------
+// Linker stuff:
+// -----------------------------------------------------------------------------
+arch(vspa2);
+number_of_cores(1);
+entry("___entry");
+
+// -----------------------------------------------------------------------------
+// Linker memory spaces:
+// -----------------------------------------------------------------------------
+memory_space (*) {
+    0 ("rx")    : vcpu, org = BASE_VCPU_PRAM,   len = SIZE_VCPU_PRAM;
+    1 ("rw")    : dram, org = BASE_VCPU_DRAM,   len = SIZE_VSPA_DRAM;
+    2 ("rx")    : ippu, org = BASE_IPPU_PRAM,   len = SIZE_IPPU_PRAM;
+}
+
+// -----------------------------------------------------------------------------
+// Section mapping:
+// -----------------------------------------------------------------------------
+unit private (*) {
+
+    MEMORY {
+        // VSPA program memories -----------------------------------------------
+        .vcpu   ("rx") 0: org = BASE_VCPU_PRAM, len = SIZE_VCPU_PRAM;
+        .ippu   ("rx") 2: org = BASE_IPPU_PRAM, len = SIZE_IPPU_PRAM;
+
+        // VSPA data memory ----------------------------------------------------
+        .dram   ("rw") 1: org = BASE_VSPA_DRAM, len = SIZE_VSPA_DRAM;
+    }
+
+    SECTIONS {
+        // VCPU program memory -------------------------------------------------
+        vcpu {
+            ___vcpu_start = .;
+            .reset;
+            .text;
+            .default;
+            .unlikely;
+            unmatch_pgm("*");
+            ___vcpu_limit = .;
+        } > .vcpu;
+
+        // IPPU program memory -------------------------------------------------
+        ippu {
+            ___ippu_start = .;
+            ".itext";
+            ".itext.*";
+            ___ippu_limit = .;
+        } > .ippu;
+
+        // VCPU data memory ----------------------------------------------------
+        dram {
+            //
+            // Bank 0
+            //
+            . = align(8*n_au());
+            ___data_start = .;
+            ___bank0_start = .;
+            ".rom";
+            ".rom.*";
+            ".rodata";
+            ".rodata.*";
+            unmatch_rom("*");
+            ".data";
+            ".data.*";
+            unmatch_data("*");
+            .bsstab;
+            ___data_limit = .;
+
+            . = align(8*n_au());
+            ___bss_start = .;
+            ".bss";
+            ".vbss";
+            ".bss.bank0";
+            unmatch_bss("*");
+            . = align(8*n_au());
+            ___bss_limit = .;
+            ___bank0_limit = .;
+
+            //
+            // Bank 1
+            //
+            . = vmorg(.dram) + SIZE_VCPU_DRAM;
+            ___bank1_start = .;
+            ".bss.bank1";
+            . = align(8*n_au());
+            ___stack_start = .;
+            ___stack = .;
+            ___stack_limit = vmorg(.dram) + SIZE_VSPA_DRAM;
+            ___bank1_limit = .;
+        } > .dram;
+    }
+}
+
+___vcpu_size    = ___vcpu_limit  - ___vcpu_start;
+___ippu_size    = ___ippu_limit  - ___ippu_start;
+___data_size    = ___data_limit  - ___data_start;
+___bss_size     = ___bss_limit   - ___bss_start;
+___stack_size   = ___stack_limit - ___stack_start;

@@ -1,0 +1,580 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================================
+//! @file           atan_asm.sx
+//! @brief          ATAN ASSEMBLY source file
+//! @author         NXP Semiconductors.
+// =============================================================================================
+#include "atan.h"
+
+#define VR (__AU_COUNT__*4)       // Number of half words for one VRA register
+
+// =============================================================================================
+// Processing steps:
+//  1. Compute X  = imag/real and 1/X = real/imag
+//  2. Compute selection mask: mask_inv_X = mask(|1/X| < 1) = binary(1 - |1/X|)
+//  3. Perform selection between X and (-1/X):
+//      X' = not(mask_inv_X) * X   + mask_inv_X * (-1/X)
+//      X' = X + mask_inv_X * (-X) + mask_inv_X * (-1/X)
+//  4. Compute full circle and half circle phase correction terms (normalized):
+//      A_half / (pi/2) = sign(X) * mask_inv_X
+//      A_full / (pi)   = (-mask(real)) * sign(imag) + sign(imag)
+//  5. Compute X'^2 and then atan(X'):
+//       V = X'^2;              (rmad)
+//       V = V * c0   + c1      (maf)
+//       V = V * X'^2 + c2;     (maf)
+//       ...................
+//       V = V * X' = atan(X'); (maf)
+//  6. Perform phase correction for final result:
+//       phase = atan(X') + (pi/2) * A_half + (pi) * A_full
+// --------------------------------------------------------------------------------------------- 
+//  setB.creg  3,0; - "normal mode": write V in VRA            -> 2 cycles before "wr."
+//  setB.creg  3,1; - "sign mode"  : write sign(V)=+/-1 in VRA -> 2 cycles before "wr."
+//  setB.creg  3,2; - "binary mode": write mask(V)=0/1  in VRA -> 2 cycles before "wr." 
+//  setB.creg 19,0; - SP VAU output width: Write 1 line
+//  setB.creg 19,1; - SP VAU output width: Write 2 lines
+// --------------------------------------------------------------------------------------------- 
+// VRA layout:
+// {R0,R1} - first 32 complex HF/SP samples -> sign(imag) -> mask(real) -> mask_inv_X -> sign(X) -> A_total / pi
+// {R2,R3} - next  32 complex HF/SP samples -> c0 -> coefficients
+// {R4,R5} - X  -> X'
+// {R6,R7} - 1/X -> X'^2 -> atan(X') -> output phase
+// =============================================================================================
+// --------------------------------------------------------------------------------------------- 
+// Subroutine name: atan2_x64_chf_hf_asm
+//   - input complex half-fixed
+//   - output real half-fixed
+// --------------------------------------------------------------------------------------------- 
+    .section .text
+    .global _atan2_x64_chf_hf_asm
+    .type _atan2_x64_chf_hf_asm, @function
+    .size _atan2_x64_chf_hf_asm, _atan2_x64_chf_hf_asm_end -_atan2_x64_chf_hf_asm
+_atan2_x64_chf_hf_asm:
+                                                               
+    ld.laddr [a0]+1;                                                      clr.VRA;
+    ld.laddr [a0]+1;                                                      set.prec single, half_fixed, half_fixed, single, single;
+                                                                          mv a2,_ATAN2_COEFF_BUFF;  
+    ld.laddr [a0]+0;    ld.h2l R0;                                                               set.Smode S0zeros, S1straight, S2straight;                                                 
+                        ld.l2h R0;                                                               set.rot R0R1r1; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       set.loop g0, LS1, LE1;                                                      // S0 <= 0; S1 <= real#1; S2 <= real#1;            
+    ld g1, [a2]+0;      ld.l2h R2;              rd S1; rd S2;                                                                                         //          S1 <= imag#1; S2 <= imag#1; g1 <= c0;   
+                                                               rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // rcp: SAU <= 1/real#1; rmad: V <= real#1;     
+                                                               rcp;rmad;  setA.VRAptr  rV,4*VR;  setB.creg 19,1;                                      // rcp: SAU <= 1/imag#1; rmad: V <= imag#1; 
+LS1:                    wr.fn;                  rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R2R3r1;                          loop_begin; // SAU = 1/real#1 => R4;
+                        wr.fn;                  rd S1; rd S2;             setA.VRAptr  rV,0*VR;                                                       // SAU = 1/imag#1 => R6;
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,2*VR;                                                       // V = real#1     => R0; rcp: SAU <= 1/real#2; rmad: V <= real#2;   
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,5*VR;                                                       // V = imag#1     => R2; rcp: SAU <= 1/imag#2; rmad: V <= imag#2;                                                                 
+                        wr.fn;                                            setA.VRAptr  rV,7*VR;  set.prec single, single, single, single, single;     // SAU = 1/real#2 => R5;
+                        wr.fn;                                            setA.VRAptr  rV,1*VR;  set.Smode S0straight, S1straight, S2zeros;           // SAU = 1/imag#2 => R7;
+                        wr.hlinecplx;                                     setA.VRAptr  rV,3*VR;  setB.VRAptr rS1,6*VR;                                // V = real#2     => R1;
+                        wr.hlinecplx;    rd S0; rd S1; rd S2;             setA.VRAptr rS0,2*VR;  setB.VRAptr rS1,4*VR;                                // V = imag#2     => R3;                                                                                                   
+    mvS.z  g2, 0x3F00;                   rd S0; rd S1;                                                                                                                   
+    sl     g2, g2, 16;                                           rmad;                                                                                // rmad: V = real/imag; g2 <= 0.5 (SP);                  
+                                                                 rmad;    setA.VRAptr rS0,6*VR;                                                       // rmad: V = imag/real;                            
+                                                                          setA.VRAptr rS2,2*VR;  set.Smode S0zeros, S1straight, S2straight;                                                                              
+                                         rd S0;        rd S2;             setA.VRAptr  rV,6*VR;  setB.VRAptr rS2,0*VR;                                                                                  
+                        wr.straight;                   rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1/X => {R6,R7};                                                      
+                        wr.straight;     rd S0; rd S1; rd S2;    rmad;                           set.Smode S0chs, S0abs, S1real1, S2real1;            // V = X   => {R4,R5}; rmad: V <= imag;                     
+                                         rd S0;        rd S2;    rmad;                           set.Smode S0zeros, S1straight, S2straight;           // rmad: V <= real;                               
+                                                                 rmad;    setA.VRAptr  rV,0*VR;  setB.creg 3,1;                                       // rmad: V <= 1 - |1/X|; 
+                                                                 rmad;    setA.VRAptr rS1,0*VR;  setB.creg 3,2;                                       // rmad: V <= X;        
+                        wr.straight;                                      setA.VRAptr rS2,0*VR;  set.Smode S0chs, S0straight, S1straight, S2straight; // V = imag      => {R0,R1} = sign(imag);                                                                                                                      
+                        wr.straight;            rd S1; rd S2;             setA.VRAptr rS0,0*VR;  setB.creg 3,1;                                       // V = real      => {R0,R1} = mask(real);                        
+                        wr.straight;     rd S0;                           setA.VRAptr rS0,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1 - |1/X| => {R0,R1} = mask_inv_X;                                                                          
+                        wr.straight;     rd S0; rd S1; rd S2;             setA.VRAptr rS0,6*VR;                                                       // V = X         => {R0,R1} = sign(X);
+                                         rd S0;                  rmad;    setA.VRAptr rS0,0*VR;  setB.creg 3,0;                                       // rmad: V <= (-mask(real)) * sign(imag) + sign(imag);
+                                         rd S0;        rd S2;    rmad;    setA.VRAptr  rV,2*VR;  set.Smode S0straight, S1straight, S2zeros;           // rmad: V <= (-X)    * mask_inv_X + X 
+                        fill.w [rV],g1;                          rmac;    setA.VRAptr  rV,0*VR;                                                       // rmac: V <= (-1/X)  * mask_inv_X + V  = X';        R2 <= c0;  
+                        fill.w [rV],g2;                          rmad;                                                                                // rmad: V <= sign(X) * mask_inv_X = A_half / (1/2); R0 <= 0.5; 
+                        wr.straight;            rd S1;                    setA.VRAptr rS2,0*VR;  set.Smode S0straight, S1hlinecplx, S2straight;       // V = A_full / (pi) => {R0,R1}; S1 <= 0.5;
+                                                       rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS0,4*VR;                                // S2 <= A_full / (pi);
+    ld.laddr [a2]+1;    wr.straight;                                      setB.VRAptr rS1,4*VR;                                                       // V = X' => {R4,R5};
+    ld.laddr [a2]-1;                     rd S0; rd S1; rd S2;     maf;                           set.Smode S0straight, S1straight,  S2zeros;          // V = A_half / (pi/2); maf: V <= A_half / (pi/2) * 0.5 + A_full / (pi);                           
+                                                                          setA.VRAptr rS1,2*VR;  set.Smode S0straight, S1hlinecplx, S2zeros; 
+                        ld.h2l R2;              rd S1;           rmad;                                                 set.loop ATAN2_NUM_COEFF-2,4;  // rmad: V <= X'^2; S1 <= c0; 
+                        ld.l2h R2;                                        setA.VRAptr rS2,2*VR+4;set.VRAincr rS2,4;    
+                                                       rd S2;             setA.VRAptr  rV,0*VR;  set.Smode S0hword, S1straight, S2i1r1i1r1;           // S2 <= c1; 
+                        wr.straight;                                      setA.VRAptr  rV,6*VR;                                                       // V = A_total / pi => {R0, R1};
+                        wr.straight;                              maf;                                                                                // V = X'^2 => {R6,R7}; maf: V <= V * c0 + c1;                                   
+                                                                          setA.VRAptr rS1,6*VR;                                           loop_begin;                   
+                                                rd S1; rd S2;                                                         
+                                                                          set.prec single, single, single, single, half_fixed;                        // Set V precision to half-fixed                                                                  
+                                                                  maf;    setA.VRAptr rS1,4*VR;                                             loop_end; // maf: V <= V * X'^2 + c2;
+    ld.laddr [a0]+1;                                                                             setB.VRAptr rS2,0*VR;                                               
+    ld.laddr [a0]+1;                            rd S1; rd S2;                                    set.Smode S0zeros, S1straight, S2straight;  
+                                                                          set.prec single, half_fixed, half_fixed, single, single; 
+    ld.laddr [a0]+0;    ld.h2l R0;                                maf;    clr.VRA;                                                                    // maf: V <= V * X' + A_total = atan(X') + A_total = phase;
+                        ld.l2h R0;                                        setA.VRAptr  rV,6*VR;  setB.VRAptr rSt,6;
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;                              set.rot R0R1r1;   
+                        ld.l2h R2;              rd S1; rd S2;               
+    wr.straight;                                               rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // V = phase
+LE1:st.laddr [a1]+1;                                           rcp;rmad;                         setB.VRAptr  rV,4*VR;                      loop_end;
+                                                                          
+    rts;
+    setB.creg  3,0;                                                                                                                                   // VAU output mode normal
+    setB.creg 19,0;                                                                                                                                   // SP VAU output width: Write 1 line
+                   
+_atan2_x64_chf_hf_asm_end:
+
+// --------------------------------------------------------------------------------------------- 
+// Subroutine name: atan2_x64_chf_sp_asm
+//   - input complex half-fixed
+//   - output real single precision
+// --------------------------------------------------------------------------------------------- 
+    .section .text
+    .global _atan2_x64_chf_sp_asm
+    .type _atan2_x64_chf_sp_asm, @function
+    .size _atan2_x64_chf_sp_asm, _atan2_x64_chf_sp_asm_end -_atan2_x64_chf_sp_asm
+_atan2_x64_chf_sp_asm:
+                                                                          
+    ld.laddr [a0]+1;                                                      clr.VRA;
+    ld.laddr [a0]+1;                                                      set.prec single, half_fixed, half_fixed, single, single;                             
+                                                                          mv a2,_ATAN2_COEFF_BUFF;
+    ld.laddr [a0]+0;    ld.h2l R0;                                                               set.Smode S0zeros, S1straight, S2straight;                                          
+                        ld.l2h R0;                                                               set.rot R0R1r1; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       set.loop g0, LS2, LE2;                                                      // S0 <= 0; S1 <= real#1; S2 <= real#1;          
+    ld g1, [a2]+0;      ld.l2h R2;              rd S1; rd S2;                                                                                         //          S1 <= imag#1; S2 <= imag#1; g1 <= c0;     
+                                                               rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // rcp: SAU <= 1/real#1; rmad: V <= real#1;     
+                                                               rcp;rmad;  setA.VRAptr  rV,4*VR;  setB.creg 19,1;                                      // rcp: SAU <= 1/imag#1; rmad: V <= imag#1; 
+                        wr.fn;                  rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R2R3r1;                                      // SAU = 1/real#1 => R4;
+LS2:                    wr.fn;                  rd S1; rd S2;             setA.VRAptr  rV,0*VR;                                           loop_begin; // SAU = 1/imag#1 => R6;
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,2*VR;                                                       // V = real#1     => R0; rcp: SAU <= 1/real#2; rmad: V <= real#2; 
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,5*VR;                                                       // V = imag#1     => R2; rcp: SAU <= 1/imag#2; rmad: V <= imag#2;                                                                
+                        wr.fn;                                            setA.VRAptr  rV,7*VR;  set.prec single, single, single, single, single;     // SAU = 1/real#2 => R5;
+                        wr.fn;                                            setA.VRAptr  rV,1*VR;  set.Smode S0straight, S1straight, S2zeros;           // SAU = 1/imag#2 => R7;
+                        wr.hlinecplx;                                     setA.VRAptr  rV,3*VR;  setB.VRAptr rS1,6*VR;                                // V = real#2     => R1;
+                        wr.hlinecplx;    rd S0; rd S1; rd S2;             setA.VRAptr rS0,2*VR;  setB.VRAptr rS1,4*VR;                                // V = imag#2     => R3;                                                                                                   
+    mvS.z  g2, 0x3F00;                   rd S0; rd S1;                                                                                                                   
+    sl     g2, g2, 16;                                           rmad;                                                                                // rmad: V = real/imag; g2 <= 0.5 (SP);                  
+                                                                 rmad;    setA.VRAptr rS0,6*VR;                                                       // rmad: V = imag/real;                            
+                                                                          setA.VRAptr rS2,2*VR;  set.Smode S0zeros, S1straight, S2straight;                                                                              
+                                         rd S0;        rd S2;             setA.VRAptr  rV,6*VR;  setB.VRAptr rS2,0*VR;                                                                                  
+                        wr.straight;                   rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1/X => {R6,R7};                                                      
+                        wr.straight;     rd S0; rd S1; rd S2;    rmad;                           set.Smode S0chs, S0abs, S1real1, S2real1;            // V = X   => {R4,R5}; rmad: V <= imag;                     
+                                         rd S0;        rd S2;    rmad;                           set.Smode S0zeros, S1straight, S2straight;           // rmad: V <= real;                               
+                                                                 rmad;    setA.VRAptr  rV,0*VR;  setB.creg 3,1;                                       // rmad: V <= 1 - |1/X|; 
+                                                                 rmad;    setA.VRAptr rS1,0*VR;  setB.creg 3,2;                                       // rmad: V <= X;        
+                        wr.straight;                                      setA.VRAptr rS2,0*VR;  set.Smode S0chs, S0straight, S1straight, S2straight; // V = imag      => {R0,R1} = sign(imag);                                                                                                                      
+                        wr.straight;            rd S1; rd S2;             setA.VRAptr rS0,0*VR;  setB.creg 3,1;                                       // V = real      => {R0,R1} = mask(real);                        
+                        wr.straight;     rd S0;                           setA.VRAptr rS0,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1 - |1/X| => {R0,R1} = mask_inv_X;                                                                          
+                        wr.straight;     rd S0; rd S1; rd S2;             setA.VRAptr rS0,6*VR;                                                       // V = X         => {R0,R1} = sign(X);
+                                         rd S0;                  rmad;    setA.VRAptr rS0,0*VR;  setB.creg 3,0;                                       // rmad: V <= (-mask(real)) * sign(imag) + sign(imag);
+                                         rd S0;        rd S2;    rmad;    setA.VRAptr  rV,2*VR;  set.Smode S0straight, S1straight, S2zeros;           // rmad: V <= (-X)    * mask_inv_X + X 
+                        fill.w [rV],g1;                          rmac;    setA.VRAptr  rV,0*VR;                                                       // rmac: V <= (-1/X)  * mask_inv_X + V  = X';        R2 <= c0;  
+                        fill.w [rV],g2;                          rmad;                                                                                // rmad: V <= sign(X) * mask_inv_X = A_half / (1/2); R0 <= 0.5; 
+                        wr.straight;            rd S1;                    setA.VRAptr rS2,0*VR;  set.Smode S0straight, S1hlinecplx, S2straight;       // V = A_full / (pi) => {R0,R1}; S1 <= 0.5;
+                                                       rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS0,4*VR;                                // S2 <= A_full / (pi);
+    ld.laddr [a2]+1;    wr.straight;                                      setB.VRAptr rS1,4*VR;                                                       // V = X' => {R4,R5};
+    ld.laddr [a2]-1;                     rd S0; rd S1; rd S2;     maf;                           set.Smode S0straight, S1straight,  S2zeros;          // V = A_half / (pi/2); maf: V <= A_half / (pi/2) * 0.5 + A_full / (pi);                           
+                                                                          setA.VRAptr rS1,2*VR;  set.Smode S0straight, S1hlinecplx, S2zeros; 
+                        ld.h2l R2;              rd S1;           rmad;                                                 set.loop ATAN2_NUM_COEFF-2,4;  // rmad: V <= X'^2; S1 <= c0; 
+                        ld.l2h R2;                                        setA.VRAptr rS2,2*VR+4;set.VRAincr rS2,4;    
+                                                       rd S2;             setA.VRAptr  rV,0*VR;  set.Smode S0hword, S1straight, S2i1r1i1r1;           // S2 <= c1; 
+                        wr.straight;                                      setA.VRAptr  rV,6*VR;                                                       // V = A_total / pi => {R0, R1};
+                        wr.straight;                              maf;                                                                                // V = X'^2 => {R6,R7}; maf: V <= V * c0 + c1;                                   
+                                                                          setA.VRAptr rS1,6*VR;                                           loop_begin;                   
+                                                rd S1; rd S2;                                                         
+                                                                  nop;                                                                             
+                                                                  maf;    setA.VRAptr rS1,4*VR;                                             loop_end; // maf: V <= V * X'^2 + c2;
+    ld.laddr [a0]+1;                                                                             setB.VRAptr rS2,0*VR;                                               
+    ld.laddr [a0]+1;                            rd S1; rd S2;                                    set.Smode S0zeros, S1straight, S2straight;  
+                                                                          set.prec single, half_fixed, half_fixed, single, single;  
+    ld.laddr [a0]+0;    ld.h2l R0;                                maf;    clr.VRA;                                                                    // maf: V <= V * X' + A_total = atan(X') + A_total = phase;
+                        ld.l2h R0;                                        setA.VRAptr  rV,6*VR;  setB.VRAptr rSt,6;                      
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;                              set.rot R0R1r1; 
+                        ld.l2h R2;              rd S1; rd S2;             setA.VRAptr rS1,2*VR;  set.rot R2R3r1;                        
+    wr.straight;                                               rcp;rmad;  setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,2*VR;                                // V = phase
+    st.laddr [a1]+1;                                           rcp;rmad;                         setB.VRAptr rSt,7;                                           
+LE2:st.laddr [a1]+1;    wr.fn;                  rd S1; rd S2;  ror;                              setB.VRAptr  rV,6*VR;                      loop_end;
+                                                   
+    rts;
+    setB.creg  3,0;                                                                                                                                   // VAU output mode normal
+    setB.creg 19,0;                                                                                                                                   // SP VAU output width: Write 1 line                                                                                                     
+    
+_atan2_x64_chf_sp_asm_end:
+
+// --------------------------------------------------------------------------------------------- 
+// Subroutine name: atan2_x64_csp_hf_asm
+//   - input complex single precision
+//   - output real half-fixed
+// --------------------------------------------------------------------------------------------- 
+    .section .text
+    .global _atan2_x64_csp_hf_asm
+    .type _atan2_x64_csp_hf_asm, @function
+    .size _atan2_x64_csp_hf_asm, _atan2_x64_csp_hf_asm_end -_atan2_x64_csp_hf_asm
+_atan2_x64_csp_hf_asm:
+    
+    ld.laddr [a0]+1;                                                      setB.creg 19,1;
+    ld.laddr [a0]+1;                                                      clr.VRA;
+    ld.laddr [a0]+1;                                                      set.prec single, single, single, single, single;
+                        ld.h2l R0;                                        mv a2,_ATAN2_COEFF_BUFF;  
+    ld.laddr [a0]+1;    ld.l2h_h2l R0;                                                           set.Smode S0zeros, S1straight, S2straight;                                                 
+    ld.laddr [a0]+0;    ld.l2h R1;                                                               set.rot R0R1r2; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       set.loop g0, LS3, LE3;                                                      // S0 <= 0; S1 <= real#1; S2 <= real#1;            
+    ld g1, [a2]+0;      ld.l2h_h2l R2;          rd S1; rd S2;                                                                                         //          S1 <= imag#1; S2 <= imag#1; g1 <= c0;   
+                        ld.l2h R3;                             rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // rcp: SAU <= 1/real#1; rmad: V <= real#1;     
+LS3:                                                           rcp;rmad;  setA.VRAptr  rV,4*VR;  set.rot R2R3r2;                          loop_begin; // rcp: SAU <= 1/imag#1; rmad: V <= imag#1; 
+                        wr.fn;                  rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;                                                       // SAU = 1/real#1 => R4;
+                        wr.fn;                  rd S1; rd S2;             setA.VRAptr  rV,0*VR;                                                       // SAU = 1/imag#1 => R6;
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,2*VR;                                                       // V = real#1     => R0; rcp: SAU <= 1/real#2; rmad: V <= real#2;   
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,5*VR;                                                       // V = imag#1     => R2; rcp: SAU <= 1/imag#2; rmad: V <= imag#2;                                                                 
+                        wr.fn;                                            setA.VRAptr  rV,7*VR;                                                       // SAU = 1/real#2 => R5;
+                        wr.fn;                                            setA.VRAptr  rV,1*VR;  set.Smode S0straight, S1straight, S2zeros;           // SAU = 1/imag#2 => R7;
+                        wr.hlinecplx;                                     setA.VRAptr  rV,3*VR;  setB.VRAptr rS1,6*VR;                                // V = real#2     => R1;
+                        wr.hlinecplx;    rd S0; rd S1; rd S2;             setA.VRAptr rS0,2*VR;  setB.VRAptr rS1,4*VR;                                // V = imag#2     => R3;                                                                                                   
+    mvS.z  g2, 0x3F00;                   rd S0; rd S1;                                                                                                                   
+    sl     g2, g2, 16;                                           rmad;                                                                                // rmad: V = real/imag; g2 <= 0.5 (SP);                  
+                                                                 rmad;    setA.VRAptr rS0,6*VR;                                                       // rmad: V = imag/real;                            
+                                                                          setA.VRAptr rS2,2*VR;  set.Smode S0zeros, S1straight, S2straight;                                                                              
+                                         rd S0;        rd S2;             setA.VRAptr  rV,6*VR;  setB.VRAptr rS2,0*VR;                                                                                  
+                        wr.straight;                   rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1/X => {R6,R7};                                                      
+                        wr.straight;     rd S0; rd S1; rd S2;    rmad;                           set.Smode S0chs, S0abs, S1real1, S2real1;            // V = X   => {R4,R5}; rmad: V <= imag;                     
+                                         rd S0;        rd S2;    rmad;                           set.Smode S0zeros, S1straight, S2straight;           // rmad: V <= real;                               
+                                                                 rmad;    setA.VRAptr  rV,0*VR;  setB.creg 3,1;                                       // rmad: V <= 1 - |1/X|; 
+                                                                 rmad;    setA.VRAptr rS1,0*VR;  setB.creg 3,2;                                       // rmad: V <= X;        
+                        wr.straight;                                      setA.VRAptr rS2,0*VR;  set.Smode S0chs, S0straight, S1straight, S2straight; // V = imag      => {R0,R1} = sign(imag);                                                                                                                      
+                        wr.straight;            rd S1; rd S2;             setA.VRAptr rS0,0*VR;  setB.creg 3,1;                                       // V = real      => {R0,R1} = mask(real);                        
+                        wr.straight;     rd S0;                           setA.VRAptr rS0,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1 - |1/X| => {R0,R1} = mask_inv_X;                                                                          
+                        wr.straight;     rd S0; rd S1; rd S2;             setA.VRAptr rS0,6*VR;                                                       // V = X         => {R0,R1} = sign(X);
+                                         rd S0;                  rmad;    setA.VRAptr rS0,0*VR;  setB.creg 3,0;                                       // rmad: V <= (-mask(real)) * sign(imag) + sign(imag);
+                                         rd S0;        rd S2;    rmad;    setA.VRAptr  rV,2*VR;  set.Smode S0straight, S1straight, S2zeros;           // rmad: V <= (-X)    * mask_inv_X + X 
+                        fill.w [rV],g1;                          rmac;    setA.VRAptr  rV,0*VR;                                                       // rmac: V <= (-1/X)  * mask_inv_X + V  = X';        R2 <= c0;  
+                        fill.w [rV],g2;                          rmad;                                                                                // rmad: V <= sign(X) * mask_inv_X = A_half / (1/2); R0 <= 0.5; 
+                        wr.straight;            rd S1;                    setA.VRAptr rS2,0*VR;  set.Smode S0straight, S1hlinecplx, S2straight;       // V = A_full / (pi) => {R0,R1}; S1 <= 0.5;
+                                                       rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS0,4*VR;                                // S2 <= A_full / (pi);
+    ld.laddr [a2]+1;    wr.straight;                                      setB.VRAptr rS1,4*VR;                                                       // V = X' => {R4,R5};
+    ld.laddr [a2]-1;                     rd S0; rd S1; rd S2;     maf;                           set.Smode S0straight, S1straight,  S2zeros;          // V = A_half / (pi/2); maf: V <= A_half / (pi/2) * 0.5 + A_full / (pi);                           
+                                                                          setA.VRAptr rS1,2*VR;  set.Smode S0straight, S1hlinecplx, S2zeros; 
+                        ld.h2l R2;              rd S1;           rmad;                                                 set.loop ATAN2_NUM_COEFF-2,4;  // rmad: V <= X'^2; S1 <= c0; 
+                        ld.l2h R2;                                        setA.VRAptr rS2,2*VR+4;set.VRAincr rS2,4;    
+                                                       rd S2;             setA.VRAptr  rV,0*VR;  set.Smode S0hword, S1straight, S2i1r1i1r1;           // S2 <= c1; 
+                        wr.straight;                                      setA.VRAptr  rV,6*VR;                                                       // V = A_total / pi => {R0, R1};
+                        wr.straight;                              maf;                                                                                // V = X'^2 => {R6,R7}; maf: V <= V * c0 + c1;                                   
+                                                                          setA.VRAptr rS1,6*VR;                                           loop_begin;                   
+                                                rd S1; rd S2;                                                         
+                                                                          set.prec single, single, single, single, half_fixed;                        // Set V precision to half-fixed                                                                  
+                                                                  maf;    setA.VRAptr rS1,4*VR;                                             loop_end; // maf: V <= V * X'^2 + c2;
+    ld.laddr [a0]+1;                                                                             setB.VRAptr rS2,0*VR;                                               
+    ld.laddr [a0]+1;                            rd S1; rd S2;                                    set.Smode S0zeros, S1straight, S2straight;  
+    ld.laddr [a0]+1;                                              
+                        ld.h2l R0;                                maf;    set.prec single, single, single, single, single;                            // maf: V <= V * X' + A_total = atan(X') + A_total = phase;
+    ld.laddr [a0]+1;    ld.l2h_h2l R0;                                     
+    ld.laddr [a0]+0;    ld.l2h R1;                                        clr.VRA;                         
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R0R1r2;
+    wr.straight;        ld.l2h_h2l R2;          rd S1; rd S2;             setA.VRAptr rS2,2*VR;  setB.VRAptr rSt,6;                                   // V = phase
+LE3:st.laddr [a1]+1;    ld.l2h R3;                             rcp;rmad;                         setB.VRAptr rS1,2*VR;                      loop_end;
+    
+    rts;
+    setB.creg  3,0;                                                                                                                                   // VAU output mode normal
+    setB.creg 19,0;                                                                                                                                   // SP VAU output width: Write 1 line
+                   
+_atan2_x64_csp_hf_asm_end:         
+
+// --------------------------------------------------------------------------------------------- 
+// Subroutine name: atan2_x64_csp_sp_asm
+//   - input complex single precision
+//   - output real single precision
+// --------------------------------------------------------------------------------------------- 
+    .section .text
+    .global _atan2_x64_csp_sp_asm
+    .type _atan2_x64_csp_sp_asm, @function
+    .size _atan2_x64_csp_sp_asm, _atan2_x64_csp_sp_asm_end -_atan2_x64_csp_sp_asm
+_atan2_x64_csp_sp_asm:
+     
+    ld.laddr [a0]+1;                                                      setB.creg 19,1;
+    ld.laddr [a0]+1;                                                      clr.VRA;
+    ld.laddr [a0]+1;                                                      set.prec single, single, single, single, single;
+                        ld.h2l R0;                                        mv a2,_ATAN2_COEFF_BUFF;  
+    ld.laddr [a0]+1;    ld.l2h_h2l R0;                                                           set.Smode S0zeros, S1straight, S2straight;                                          
+    ld.laddr [a0]+0;    ld.l2h R1;                                                               set.rot R0R1r2; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       set.loop g0, LS4, LE4;                                                      // S0 <= 0; S1 <= real#1; S2 <= real#1;          
+    ld g1, [a2]+0;      ld.l2h_h2l R2;          rd S1; rd S2;                                                                                         //          S1 <= imag#1; S2 <= imag#1; g1 <= c0;     
+                        ld.l2h R3;                             rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // rcp: SAU <= 1/real#1; rmad: V <= real#1;     
+                                                               rcp;rmad;  setA.VRAptr  rV,4*VR;                                                       // rcp: SAU <= 1/imag#1; rmad: V <= imag#1; 
+LS4:                    wr.fn;                  rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R2R3r2;                          loop_begin; // SAU = 1/real#1 => R4;
+                        wr.fn;                  rd S1; rd S2;             setA.VRAptr  rV,0*VR;                                                       // SAU = 1/imag#1 => R6;
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,2*VR;                                                       // V = real#1     => R0; rcp: SAU <= 1/real#2; rmad: V <= real#2; 
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,5*VR;                                                       // V = imag#1     => R2; rcp: SAU <= 1/imag#2; rmad: V <= imag#2;                                                                
+                        wr.fn;                                            setA.VRAptr  rV,7*VR;                                                       // SAU = 1/real#2 => R5;
+                        wr.fn;                                            setA.VRAptr  rV,1*VR;  set.Smode S0straight, S1straight, S2zeros;           // SAU = 1/imag#2 => R7;
+                        wr.hlinecplx;                                     setA.VRAptr  rV,3*VR;  setB.VRAptr rS1,6*VR;                                // V = real#2     => R1;
+                        wr.hlinecplx;    rd S0; rd S1; rd S2;             setA.VRAptr rS0,2*VR;  setB.VRAptr rS1,4*VR;                                // V = imag#2     => R3;                                                                                                   
+    mvS.z  g2, 0x3F00;                   rd S0; rd S1;                                                                                                                   
+    sl     g2, g2, 16;                                           rmad;                                                                                // rmad: V = real/imag; g2 <= 0.5 (SP);                  
+                                                                 rmad;    setA.VRAptr rS0,6*VR;                                                       // rmad: V = imag/real;                            
+                                                                          setA.VRAptr rS2,2*VR;  set.Smode S0zeros, S1straight, S2straight;                                                                              
+                                         rd S0;        rd S2;             setA.VRAptr  rV,6*VR;  setB.VRAptr rS2,0*VR;                                                                                  
+                        wr.straight;                   rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1/X => {R6,R7};                                                      
+                        wr.straight;     rd S0; rd S1; rd S2;    rmad;                           set.Smode S0chs, S0abs, S1real1, S2real1;            // V = X   => {R4,R5}; rmad: V <= imag;                     
+                                         rd S0;        rd S2;    rmad;                           set.Smode S0zeros, S1straight, S2straight;           // rmad: V <= real;                               
+                                                                 rmad;    setA.VRAptr  rV,0*VR;  setB.creg 3,1;                                       // rmad: V <= 1 - |1/X|; 
+                                                                 rmad;    setA.VRAptr rS1,0*VR;  setB.creg 3,2;                                       // rmad: V <= X;        
+                        wr.straight;                                      setA.VRAptr rS2,0*VR;  set.Smode S0chs, S0straight, S1straight, S2straight; // V = imag      => {R0,R1} = sign(imag);                                                                                                                      
+                        wr.straight;            rd S1; rd S2;             setA.VRAptr rS0,0*VR;  setB.creg 3,1;                                       // V = real      => {R0,R1} = mask(real);                        
+                        wr.straight;     rd S0;                           setA.VRAptr rS0,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1 - |1/X| => {R0,R1} = mask_inv_X;                                                                          
+                        wr.straight;     rd S0; rd S1; rd S2;             setA.VRAptr rS0,6*VR;                                                       // V = X         => {R0,R1} = sign(X);
+                                         rd S0;                  rmad;    setA.VRAptr rS0,0*VR;  setB.creg 3,0;                                       // rmad: V <= (-mask(real)) * sign(imag) + sign(imag);
+                                         rd S0;        rd S2;    rmad;    setA.VRAptr  rV,2*VR;  set.Smode S0straight, S1straight, S2zeros;           // rmad: V <= (-X)    * mask_inv_X + X 
+                        fill.w [rV],g1;                          rmac;    setA.VRAptr  rV,0*VR;                                                       // rmac: V <= (-1/X)  * mask_inv_X + V  = X';        R2 <= c0;  
+                        fill.w [rV],g2;                          rmad;                                                                                // rmad: V <= sign(X) * mask_inv_X = A_half / (1/2); R0 <= 0.5; 
+                        wr.straight;            rd S1;                    setA.VRAptr rS2,0*VR;  set.Smode S0straight, S1hlinecplx, S2straight;       // V = A_full / (pi) => {R0,R1}; S1 <= 0.5;
+                                                       rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS0,4*VR;                                // S2 <= A_full / (pi);
+    ld.laddr [a2]+1;    wr.straight;                                      setB.VRAptr rS1,4*VR;                                                       // V = X' => {R4,R5};
+    ld.laddr [a2]-1;                     rd S0; rd S1; rd S2;     maf;                           set.Smode S0straight, S1straight,  S2zeros;          // V = A_half / (pi/2); maf: V <= A_half / (pi/2) * 0.5 + A_full / (pi);                           
+                                                                          setA.VRAptr rS1,2*VR;  set.Smode S0straight, S1hlinecplx, S2zeros; 
+                        ld.h2l R2;              rd S1;           rmad;                                                 set.loop ATAN2_NUM_COEFF-2,4;  // rmad: V <= X'^2; S1 <= c0; 
+                        ld.l2h R2;                                        setA.VRAptr rS2,2*VR+4;set.VRAincr rS2,4;    
+                                                       rd S2;             setA.VRAptr  rV,0*VR;  set.Smode S0hword, S1straight, S2i1r1i1r1;           // S2 <= c1; 
+                        wr.straight;                                      setA.VRAptr  rV,6*VR;                                                       // V = A_total / pi => {R0, R1};
+                        wr.straight;                              maf;                                                                                // V = X'^2 => {R6,R7}; maf: V <= V * c0 + c1;                                   
+                                                                          setA.VRAptr rS1,6*VR;                                           loop_begin;                   
+                                                rd S1; rd S2;                                                         
+                                                                  nop;                                                                             
+                                                                  maf;    setA.VRAptr rS1,4*VR;                                             loop_end; // maf: V <= V * X'^2 + c2;
+    ld.laddr [a0]+1;                                                                             setB.VRAptr rS2,0*VR;                                               
+    ld.laddr [a0]+1;                            rd S1; rd S2;                                    set.Smode S0zeros, S1straight, S2straight;  
+    ld.laddr [a0]+1;                                                      
+                        ld.h2l R0;                                maf;                                                                                // maf: V <= V * X' + A_total = atan(X') + A_total = phase;
+    ld.laddr [a0]+1;    ld.l2h_h2l R0;                                    clr.VRA;                        
+    ld.laddr [a0]+0;    ld.l2h R1;                                                               setB.VRAptr rSt,6; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R0R1r2; 
+    wr.straight;        ld.l2h_h2l R2;          rd S1; rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS1,2*VR;                                // V = phase
+    st.laddr [a1]+1;    ld.l2h R3;                             rcp;rmad;                         setB.VRAptr rSt,7;                                           
+LE4:st.laddr [a1]+1;                                           rcp;rmad;                         setB.VRAptr rS2,2*VR;                      loop_end;
+                                                                
+    rts;
+    setB.creg  3,0;                                                                                                                                   // VAU output mode normal
+    setB.creg 19,0;                                                                                                                                   // SP VAU output width: Write 1 line                                                                                                     
+    
+_atan2_x64_csp_sp_asm_end:
+
+// --------------------------------------------------------------------------------------------- 
+// Subroutine name: atan2_x64_chp_hp_asm
+//   - input complex half-precision
+//   - output real half-precision
+// --------------------------------------------------------------------------------------------- 
+    .section .text
+    .global _atan2_x64_chp_hp_asm
+    .type _atan2_x64_chp_hp_asm, @function
+    .size _atan2_x64_chp_hp_asm, _atan2_x64_chp_hp_asm_end -_atan2_x64_chp_hp_asm
+_atan2_x64_chp_hp_asm:
+                                                               
+    ld.laddr [a0]+1;                                                      clr.VRA;
+    ld.laddr [a0]+1;                                                      set.prec single, half, half, single, single;
+                                                                          mv a2,_ATAN2_COEFF_BUFF;  
+    ld.laddr [a0]+0;    ld.h2l R0;                                                               set.Smode S0zeros, S1straight, S2straight;                                                 
+                        ld.l2h R0;                                                               set.rot R0R1r1; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       set.loop g0, LS5, LE5;                                                      // S0 <= 0; S1 <= real#1; S2 <= real#1;            
+    ld g1, [a2]+0;      ld.l2h R2;              rd S1; rd S2;                                                                                         //          S1 <= imag#1; S2 <= imag#1; g1 <= c0;   
+                                                               rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // rcp: SAU <= 1/real#1; rmad: V <= real#1;     
+                                                               rcp;rmad;  setA.VRAptr  rV,4*VR;  setB.creg 19,1;                                      // rcp: SAU <= 1/imag#1; rmad: V <= imag#1; 
+LS5:                    wr.fn;                  rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R2R3r1;                          loop_begin; // SAU = 1/real#1 => R4;
+                        wr.fn;                  rd S1; rd S2;             setA.VRAptr  rV,0*VR;                                                       // SAU = 1/imag#1 => R6;
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,2*VR;                                                       // V = real#1     => R0; rcp: SAU <= 1/real#2; rmad: V <= real#2;   
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,5*VR;                                                       // V = imag#1     => R2; rcp: SAU <= 1/imag#2; rmad: V <= imag#2;                                                                 
+                        wr.fn;                                            setA.VRAptr  rV,7*VR;  set.prec single, single, single, single, single;     // SAU = 1/real#2 => R5;
+                        wr.fn;                                            setA.VRAptr  rV,1*VR;  set.Smode S0straight, S1straight, S2zeros;           // SAU = 1/imag#2 => R7;
+                        wr.hlinecplx;                                     setA.VRAptr  rV,3*VR;  setB.VRAptr rS1,6*VR;                                // V = real#2     => R1;
+                        wr.hlinecplx;    rd S0; rd S1; rd S2;             setA.VRAptr rS0,2*VR;  setB.VRAptr rS1,4*VR;                                // V = imag#2     => R3;                                                                                                   
+    mvS.z  g2, 0x3F00;                   rd S0; rd S1;                                                                                                                   
+    sl     g2, g2, 16;                                           rmad;                                                                                // rmad: V = real/imag; g2 <= 0.5 (SP);                  
+                                                                 rmad;    setA.VRAptr rS0,6*VR;                                                       // rmad: V = imag/real;                            
+                                                                          setA.VRAptr rS2,2*VR;  set.Smode S0zeros, S1straight, S2straight;                                                                              
+                                         rd S0;        rd S2;             setA.VRAptr  rV,6*VR;  setB.VRAptr rS2,0*VR;                                                                                  
+                        wr.straight;                   rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1/X => {R6,R7};                                                      
+                        wr.straight;     rd S0; rd S1; rd S2;    rmad;                           set.Smode S0chs, S0abs, S1real1, S2real1;            // V = X   => {R4,R5}; rmad: V <= imag;                     
+                                         rd S0;        rd S2;    rmad;                           set.Smode S0zeros, S1straight, S2straight;           // rmad: V <= real;                               
+                                                                 rmad;    setA.VRAptr  rV,0*VR;  setB.creg 3,1;                                       // rmad: V <= 1 - |1/X|; 
+                                                                 rmad;    setA.VRAptr rS1,0*VR;  setB.creg 3,2;                                       // rmad: V <= X;        
+                        wr.straight;                                      setA.VRAptr rS2,0*VR;  set.Smode S0chs, S0straight, S1straight, S2straight; // V = imag      => {R0,R1} = sign(imag);                                                                                                                      
+                        wr.straight;            rd S1; rd S2;             setA.VRAptr rS0,0*VR;  setB.creg 3,1;                                       // V = real      => {R0,R1} = mask(real);                        
+                        wr.straight;     rd S0;                           setA.VRAptr rS0,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1 - |1/X| => {R0,R1} = mask_inv_X;                                                                          
+                        wr.straight;     rd S0; rd S1; rd S2;             setA.VRAptr rS0,6*VR;                                                       // V = X         => {R0,R1} = sign(X);
+                                         rd S0;                  rmad;    setA.VRAptr rS0,0*VR;  setB.creg 3,0;                                       // rmad: V <= (-mask(real)) * sign(imag) + sign(imag);
+                                         rd S0;        rd S2;    rmad;    setA.VRAptr  rV,2*VR;  set.Smode S0straight, S1straight, S2zeros;           // rmad: V <= (-X)    * mask_inv_X + X 
+                        fill.w [rV],g1;                          rmac;    setA.VRAptr  rV,0*VR;                                                       // rmac: V <= (-1/X)  * mask_inv_X + V  = X';        R2 <= c0;  
+                        fill.w [rV],g2;                          rmad;                                                                                // rmad: V <= sign(X) * mask_inv_X = A_half / (1/2); R0 <= 0.5; 
+                        wr.straight;            rd S1;                    setA.VRAptr rS2,0*VR;  set.Smode S0straight, S1hlinecplx, S2straight;       // V = A_full / (pi) => {R0,R1}; S1 <= 0.5;
+                                                       rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS0,4*VR;                                // S2 <= A_full / (pi);
+    ld.laddr [a2]+1;    wr.straight;                                      setB.VRAptr rS1,4*VR;                                                       // V = X' => {R4,R5};
+    ld.laddr [a2]-1;                     rd S0; rd S1; rd S2;     maf;                           set.Smode S0straight, S1straight,  S2zeros;          // V = A_half / (pi/2); maf: V <= A_half / (pi/2) * 0.5 + A_full / (pi);                           
+                                                                          setA.VRAptr rS1,2*VR;  set.Smode S0straight, S1hlinecplx, S2zeros; 
+                        ld.h2l R2;              rd S1;           rmad;                                                 set.loop ATAN2_NUM_COEFF-2,4;  // rmad: V <= X'^2; S1 <= c0; 
+                        ld.l2h R2;                                        setA.VRAptr rS2,2*VR+4;set.VRAincr rS2,4;    
+                                                       rd S2;             setA.VRAptr  rV,0*VR;  set.Smode S0hword, S1straight, S2i1r1i1r1;           // S2 <= c1; 
+                        wr.straight;                                      setA.VRAptr  rV,6*VR;                                                       // V = A_total / pi => {R0, R1};
+                        wr.straight;                              maf;                                                                                // V = X'^2 => {R6,R7}; maf: V <= V * c0 + c1;                                   
+                                                                          setA.VRAptr rS1,6*VR;                                           loop_begin;                   
+                                                rd S1; rd S2;                                                         
+                                                                          set.prec single, single, single, single, half;                              // Set V precision to half                                                                 
+                                                                  maf;    setA.VRAptr rS1,4*VR;                                             loop_end; // maf: V <= V * X'^2 + c2;
+    ld.laddr [a0]+1;                                                                             setB.VRAptr rS2,0*VR;                                               
+    ld.laddr [a0]+1;                            rd S1; rd S2;                                    set.Smode S0zeros, S1straight, S2straight;  
+                                                                          set.prec single, half, half, single, single; 
+    ld.laddr [a0]+0;    ld.h2l R0;                                maf;    clr.VRA;                                                                    // maf: V <= V * X' + A_total = atan(X') + A_total = phase;
+                        ld.l2h R0;                                        setA.VRAptr  rV,6*VR;  setB.VRAptr rSt,6;
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;                              set.rot R0R1r1;   
+                        ld.l2h R2;              rd S1; rd S2;               
+    wr.straight;                                               rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // V = phase
+LE5:st.laddr [a1]+1;                                           rcp;rmad;                         setB.VRAptr  rV,4*VR;                      loop_end;
+                                                                          
+    rts;
+    setB.creg  3,0;                                                                                                                                   // VAU output mode normal
+    setB.creg 19,0;                                                                                                                                   // SP VAU output width: Write 1 line
+                   
+_atan2_x64_chp_hp_asm_end:
+
+// --------------------------------------------------------------------------------------------- 
+// Subroutine name: atan2_x64_chp_sp_asm
+//   - input complex half-precision
+//   - output real single precision
+// --------------------------------------------------------------------------------------------- 
+    .section .text
+    .global _atan2_x64_chp_sp_asm
+    .type _atan2_x64_chp_sp_asm, @function
+    .size _atan2_x64_chp_sp_asm, _atan2_x64_chp_sp_asm_end -_atan2_x64_chp_sp_asm
+_atan2_x64_chp_sp_asm:
+                                                                          
+    ld.laddr [a0]+1;                                                      clr.VRA;
+    ld.laddr [a0]+1;                                                      set.prec single, half, half, single, single;                             
+                                                                          mv a2,_ATAN2_COEFF_BUFF;
+    ld.laddr [a0]+0;    ld.h2l R0;                                                               set.Smode S0zeros, S1straight, S2straight;                                          
+                        ld.l2h R0;                                                               set.rot R0R1r1; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       set.loop g0, LS6, LE6;                                                      // S0 <= 0; S1 <= real#1; S2 <= real#1;          
+    ld g1, [a2]+0;      ld.l2h R2;              rd S1; rd S2;                                                                                         //          S1 <= imag#1; S2 <= imag#1; g1 <= c0;     
+                                                               rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // rcp: SAU <= 1/real#1; rmad: V <= real#1;     
+                                                               rcp;rmad;  setA.VRAptr  rV,4*VR;  setB.creg 19,1;                                      // rcp: SAU <= 1/imag#1; rmad: V <= imag#1; 
+                        wr.fn;                  rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R2R3r1;                                      // SAU = 1/real#1 => R4;
+LS6:                    wr.fn;                  rd S1; rd S2;             setA.VRAptr  rV,0*VR;                                           loop_begin; // SAU = 1/imag#1 => R6;
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,2*VR;                                                       // V = real#1     => R0; rcp: SAU <= 1/real#2; rmad: V <= real#2; 
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,5*VR;                                                       // V = imag#1     => R2; rcp: SAU <= 1/imag#2; rmad: V <= imag#2;                                                                
+                        wr.fn;                                            setA.VRAptr  rV,7*VR;  set.prec single, single, single, single, single;     // SAU = 1/real#2 => R5;
+                        wr.fn;                                            setA.VRAptr  rV,1*VR;  set.Smode S0straight, S1straight, S2zeros;           // SAU = 1/imag#2 => R7;
+                        wr.hlinecplx;                                     setA.VRAptr  rV,3*VR;  setB.VRAptr rS1,6*VR;                                // V = real#2     => R1;
+                        wr.hlinecplx;    rd S0; rd S1; rd S2;             setA.VRAptr rS0,2*VR;  setB.VRAptr rS1,4*VR;                                // V = imag#2     => R3;                                                                                                   
+    mvS.z  g2, 0x3F00;                   rd S0; rd S1;                                                                                                                   
+    sl     g2, g2, 16;                                           rmad;                                                                                // rmad: V = real/imag; g2 <= 0.5 (SP);                  
+                                                                 rmad;    setA.VRAptr rS0,6*VR;                                                       // rmad: V = imag/real;                            
+                                                                          setA.VRAptr rS2,2*VR;  set.Smode S0zeros, S1straight, S2straight;                                                                              
+                                         rd S0;        rd S2;             setA.VRAptr  rV,6*VR;  setB.VRAptr rS2,0*VR;                                                                                  
+                        wr.straight;                   rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1/X => {R6,R7};                                                      
+                        wr.straight;     rd S0; rd S1; rd S2;    rmad;                           set.Smode S0chs, S0abs, S1real1, S2real1;            // V = X   => {R4,R5}; rmad: V <= imag;                     
+                                         rd S0;        rd S2;    rmad;                           set.Smode S0zeros, S1straight, S2straight;           // rmad: V <= real;                               
+                                                                 rmad;    setA.VRAptr  rV,0*VR;  setB.creg 3,1;                                       // rmad: V <= 1 - |1/X|; 
+                                                                 rmad;    setA.VRAptr rS1,0*VR;  setB.creg 3,2;                                       // rmad: V <= X;        
+                        wr.straight;                                      setA.VRAptr rS2,0*VR;  set.Smode S0chs, S0straight, S1straight, S2straight; // V = imag      => {R0,R1} = sign(imag);                                                                                                                      
+                        wr.straight;            rd S1; rd S2;             setA.VRAptr rS0,0*VR;  setB.creg 3,1;                                       // V = real      => {R0,R1} = mask(real);                        
+                        wr.straight;     rd S0;                           setA.VRAptr rS0,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1 - |1/X| => {R0,R1} = mask_inv_X;                                                                          
+                        wr.straight;     rd S0; rd S1; rd S2;             setA.VRAptr rS0,6*VR;                                                       // V = X         => {R0,R1} = sign(X);
+                                         rd S0;                  rmad;    setA.VRAptr rS0,0*VR;  setB.creg 3,0;                                       // rmad: V <= (-mask(real)) * sign(imag) + sign(imag);
+                                         rd S0;        rd S2;    rmad;    setA.VRAptr  rV,2*VR;  set.Smode S0straight, S1straight, S2zeros;           // rmad: V <= (-X)    * mask_inv_X + X 
+                        fill.w [rV],g1;                          rmac;    setA.VRAptr  rV,0*VR;                                                       // rmac: V <= (-1/X)  * mask_inv_X + V  = X';        R2 <= c0;  
+                        fill.w [rV],g2;                          rmad;                                                                                // rmad: V <= sign(X) * mask_inv_X = A_half / (1/2); R0 <= 0.5; 
+                        wr.straight;            rd S1;                    setA.VRAptr rS2,0*VR;  set.Smode S0straight, S1hlinecplx, S2straight;       // V = A_full / (pi) => {R0,R1}; S1 <= 0.5;
+                                                       rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS0,4*VR;                                // S2 <= A_full / (pi);
+    ld.laddr [a2]+1;    wr.straight;                                      setB.VRAptr rS1,4*VR;                                                       // V = X' => {R4,R5};
+    ld.laddr [a2]-1;                     rd S0; rd S1; rd S2;     maf;                           set.Smode S0straight, S1straight,  S2zeros;          // V = A_half / (pi/2); maf: V <= A_half / (pi/2) * 0.5 + A_full / (pi);                           
+                                                                          setA.VRAptr rS1,2*VR;  set.Smode S0straight, S1hlinecplx, S2zeros; 
+                        ld.h2l R2;              rd S1;           rmad;                                                 set.loop ATAN2_NUM_COEFF-2,4;  // rmad: V <= X'^2; S1 <= c0; 
+                        ld.l2h R2;                                        setA.VRAptr rS2,2*VR+4;set.VRAincr rS2,4;    
+                                                       rd S2;             setA.VRAptr  rV,0*VR;  set.Smode S0hword, S1straight, S2i1r1i1r1;           // S2 <= c1; 
+                        wr.straight;                                      setA.VRAptr  rV,6*VR;                                                       // V = A_total / pi => {R0, R1};
+                        wr.straight;                              maf;                                                                                // V = X'^2 => {R6,R7}; maf: V <= V * c0 + c1;                                   
+                                                                          setA.VRAptr rS1,6*VR;                                           loop_begin;                   
+                                                rd S1; rd S2;                                                         
+                                                                  nop;                                                                             
+                                                                  maf;    setA.VRAptr rS1,4*VR;                                             loop_end; // maf: V <= V * X'^2 + c2;
+    ld.laddr [a0]+1;                                                                             setB.VRAptr rS2,0*VR;                                               
+    ld.laddr [a0]+1;                            rd S1; rd S2;                                    set.Smode S0zeros, S1straight, S2straight;  
+                                                                          set.prec single, half, half, single, single;  
+    ld.laddr [a0]+0;    ld.h2l R0;                                maf;    clr.VRA;                                                                    // maf: V <= V * X' + A_total = atan(X') + A_total = phase;
+                        ld.l2h R0;                                        setA.VRAptr  rV,6*VR;  setB.VRAptr rSt,6;                      
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;                              set.rot R0R1r1; 
+                        ld.l2h R2;              rd S1; rd S2;             setA.VRAptr rS1,2*VR;  set.rot R2R3r1;                        
+    wr.straight;                                               rcp;rmad;  setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,2*VR;                                // V = phase
+    st.laddr [a1]+1;                                           rcp;rmad;                         setB.VRAptr rSt,7;                                           
+LE6:st.laddr [a1]+1;    wr.fn;                  rd S1; rd S2;  ror;                              setB.VRAptr  rV,6*VR;                      loop_end;
+                                                   
+    rts;
+    setB.creg  3,0;                                                                                                                                   // VAU output mode normal
+    setB.creg 19,0;                                                                                                                                   // SP VAU output width: Write 1 line                                                                                                     
+    
+_atan2_x64_chp_sp_asm_end:
+
+// --------------------------------------------------------------------------------------------- 
+// Subroutine name: atan2_x64_csp_hp_asm
+//   - input complex single precision
+//   - output real half-precision
+// --------------------------------------------------------------------------------------------- 
+    .section .text
+    .global _atan2_x64_csp_hp_asm
+    .type _atan2_x64_csp_hp_asm, @function
+    .size _atan2_x64_csp_hp_asm, _atan2_x64_csp_hp_asm_end -_atan2_x64_csp_hp_asm
+_atan2_x64_csp_hp_asm:
+    
+    ld.laddr [a0]+1;                                                      setB.creg 19,1;
+    ld.laddr [a0]+1;                                                      clr.VRA;
+    ld.laddr [a0]+1;                                                      set.prec single, single, single, single, single;
+                        ld.h2l R0;                                        mv a2,_ATAN2_COEFF_BUFF;  
+    ld.laddr [a0]+1;    ld.l2h_h2l R0;                                                           set.Smode S0zeros, S1straight, S2straight;                                                 
+    ld.laddr [a0]+0;    ld.l2h R1;                                                               set.rot R0R1r2; 
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       set.loop g0, LS7, LE7;                                                      // S0 <= 0; S1 <= real#1; S2 <= real#1;            
+    ld g1, [a2]+0;      ld.l2h_h2l R2;          rd S1; rd S2;                                                                                         //          S1 <= imag#1; S2 <= imag#1; g1 <= c0;   
+                        ld.l2h R3;                             rcp;rmad;  setA.VRAptr rS1,2*VR;  setB.VRAptr rS2,2*VR;                                // rcp: SAU <= 1/real#1; rmad: V <= real#1;     
+LS7:                                                           rcp;rmad;  setA.VRAptr  rV,4*VR;  set.rot R2R3r2;                          loop_begin; // rcp: SAU <= 1/imag#1; rmad: V <= imag#1; 
+                        wr.fn;                  rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;                                                       // SAU = 1/real#1 => R4;
+                        wr.fn;                  rd S1; rd S2;             setA.VRAptr  rV,0*VR;                                                       // SAU = 1/imag#1 => R6;
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,2*VR;                                                       // V = real#1     => R0; rcp: SAU <= 1/real#2; rmad: V <= real#2;   
+                        wr.hlinecplx;                          rcp;rmad;  setA.VRAptr  rV,5*VR;                                                       // V = imag#1     => R2; rcp: SAU <= 1/imag#2; rmad: V <= imag#2;                                                                 
+                        wr.fn;                                            setA.VRAptr  rV,7*VR;                                                       // SAU = 1/real#2 => R5;
+                        wr.fn;                                            setA.VRAptr  rV,1*VR;  set.Smode S0straight, S1straight, S2zeros;           // SAU = 1/imag#2 => R7;
+                        wr.hlinecplx;                                     setA.VRAptr  rV,3*VR;  setB.VRAptr rS1,6*VR;                                // V = real#2     => R1;
+                        wr.hlinecplx;    rd S0; rd S1; rd S2;             setA.VRAptr rS0,2*VR;  setB.VRAptr rS1,4*VR;                                // V = imag#2     => R3;                                                                                                   
+    mvS.z  g2, 0x3F00;                   rd S0; rd S1;                                                                                                                   
+    sl     g2, g2, 16;                                           rmad;                                                                                // rmad: V = real/imag; g2 <= 0.5 (SP);                  
+                                                                 rmad;    setA.VRAptr rS0,6*VR;                                                       // rmad: V = imag/real;                            
+                                                                          setA.VRAptr rS2,2*VR;  set.Smode S0zeros, S1straight, S2straight;                                                                              
+                                         rd S0;        rd S2;             setA.VRAptr  rV,6*VR;  setB.VRAptr rS2,0*VR;                                                                                  
+                        wr.straight;                   rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1/X => {R6,R7};                                                      
+                        wr.straight;     rd S0; rd S1; rd S2;    rmad;                           set.Smode S0chs, S0abs, S1real1, S2real1;            // V = X   => {R4,R5}; rmad: V <= imag;                     
+                                         rd S0;        rd S2;    rmad;                           set.Smode S0zeros, S1straight, S2straight;           // rmad: V <= real;                               
+                                                                 rmad;    setA.VRAptr  rV,0*VR;  setB.creg 3,1;                                       // rmad: V <= 1 - |1/X|; 
+                                                                 rmad;    setA.VRAptr rS1,0*VR;  setB.creg 3,2;                                       // rmad: V <= X;        
+                        wr.straight;                                      setA.VRAptr rS2,0*VR;  set.Smode S0chs, S0straight, S1straight, S2straight; // V = imag      => {R0,R1} = sign(imag);                                                                                                                      
+                        wr.straight;            rd S1; rd S2;             setA.VRAptr rS0,0*VR;  setB.creg 3,1;                                       // V = real      => {R0,R1} = mask(real);                        
+                        wr.straight;     rd S0;                           setA.VRAptr rS0,4*VR;  setB.VRAptr rS2,4*VR;                                // V = 1 - |1/X| => {R0,R1} = mask_inv_X;                                                                          
+                        wr.straight;     rd S0; rd S1; rd S2;             setA.VRAptr rS0,6*VR;                                                       // V = X         => {R0,R1} = sign(X);
+                                         rd S0;                  rmad;    setA.VRAptr rS0,0*VR;  setB.creg 3,0;                                       // rmad: V <= (-mask(real)) * sign(imag) + sign(imag);
+                                         rd S0;        rd S2;    rmad;    setA.VRAptr  rV,2*VR;  set.Smode S0straight, S1straight, S2zeros;           // rmad: V <= (-X)    * mask_inv_X + X 
+                        fill.w [rV],g1;                          rmac;    setA.VRAptr  rV,0*VR;                                                       // rmac: V <= (-1/X)  * mask_inv_X + V  = X';        R2 <= c0;  
+                        fill.w [rV],g2;                          rmad;                                                                                // rmad: V <= sign(X) * mask_inv_X = A_half / (1/2); R0 <= 0.5; 
+                        wr.straight;            rd S1;                    setA.VRAptr rS2,0*VR;  set.Smode S0straight, S1hlinecplx, S2straight;       // V = A_full / (pi) => {R0,R1}; S1 <= 0.5;
+                                                       rd S2;             setA.VRAptr  rV,4*VR;  setB.VRAptr rS0,4*VR;                                // S2 <= A_full / (pi);
+    ld.laddr [a2]+1;    wr.straight;                                      setB.VRAptr rS1,4*VR;                                                       // V = X' => {R4,R5};
+    ld.laddr [a2]-1;                     rd S0; rd S1; rd S2;     maf;                           set.Smode S0straight, S1straight,  S2zeros;          // V = A_half / (pi/2); maf: V <= A_half / (pi/2) * 0.5 + A_full / (pi);                           
+                                                                          setA.VRAptr rS1,2*VR;  set.Smode S0straight, S1hlinecplx, S2zeros; 
+                        ld.h2l R2;              rd S1;           rmad;                                                 set.loop ATAN2_NUM_COEFF-2,4;  // rmad: V <= X'^2; S1 <= c0; 
+                        ld.l2h R2;                                        setA.VRAptr rS2,2*VR+4;set.VRAincr rS2,4;    
+                                                       rd S2;             setA.VRAptr  rV,0*VR;  set.Smode S0hword, S1straight, S2i1r1i1r1;           // S2 <= c1; 
+                        wr.straight;                                      setA.VRAptr  rV,6*VR;                                                       // V = A_total / pi => {R0, R1};
+                        wr.straight;                              maf;                                                                                // V = X'^2 => {R6,R7}; maf: V <= V * c0 + c1;                                   
+                                                                          setA.VRAptr rS1,6*VR;                                           loop_begin;                   
+                                                rd S1; rd S2;                                                         
+                                                                          set.prec single, single, single, single, half;                              // Set V precision to half                                                                 
+                                                                  maf;    setA.VRAptr rS1,4*VR;                                             loop_end; // maf: V <= V * X'^2 + c2;
+    ld.laddr [a0]+1;                                                                             setB.VRAptr rS2,0*VR;                                               
+    ld.laddr [a0]+1;                            rd S1; rd S2;                                    set.Smode S0zeros, S1straight, S2straight;  
+    ld.laddr [a0]+1;                                              
+                        ld.h2l R0;                                maf;    set.prec single, single, single, single, single;                            // maf: V <= V * X' + A_total = atan(X') + A_total = phase;
+    ld.laddr [a0]+1;    ld.l2h_h2l R0;                                     
+    ld.laddr [a0]+0;    ld.l2h R1;                                        clr.VRA;                         
+                        ld.h2l R2;       rd S0; rd S1; rd S2;  ror;       setA.VRAptr  rV,6*VR;  set.rot R0R1r2;
+    wr.straight;        ld.l2h_h2l R2;          rd S1; rd S2;             setA.VRAptr rS2,2*VR;  setB.VRAptr rSt,6;                                   // V = phase
+LE7:st.laddr [a1]+1;    ld.l2h R3;                             rcp;rmad;                         setB.VRAptr rS1,2*VR;                      loop_end;
+    
+    rts;
+    setB.creg  3,0;                                                                                                                                   // VAU output mode normal
+    setB.creg 19,0;                                                                                                                                   // SP VAU output width: Write 1 line
+                   
+_atan2_x64_csp_hp_asm_end:      

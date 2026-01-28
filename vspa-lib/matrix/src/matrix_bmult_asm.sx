@@ -1,0 +1,324 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           matrix_bmult_asm.sx
+//! @brief          Batch multiplication ASSEMBLY source file
+//! @author         NXP Semiconductors.
+// =============================================================================
+#include "vspa.h"
+
+#define  VR (__AU_COUNT__*4)       // Number of half words for one full VRA register (full DMEM line)
+#define HVR (__AU_COUNT__*2)       // Number of half words for one half VRA register (half DMEM line)
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_64xd2xd3_chfl_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_64xd2xd3_chfl_csp_chfl_asm
+    .type _mat_bmult_64xd2xd3_chfl_csp_chfl_asm, @function
+    .size _mat_bmult_64xd2xd3_chfl_csp_chfl_asm, _mat_bmult_64xd2xd3_chfl_csp_chfl_asm_end -_mat_bmult_64xd2xd3_chfl_csp_chfl_asm
+_mat_bmult_64xd2xd3_chfl_csp_chfl_asm:
+
+    // -----------------------------------------------------------------------------
+    // 1st loop (innermost): #OUT lines            -> dim1 = 64
+    // 2nd loop (next):      #VEC (input streams)  -> dim2 >= 3
+    // 3rd loop (outermost): #OUT (output streams) -> dim3 >= 1   
+    // -----------------------------------------------------------------------------  
+ 
+    sl g2, g1, 8;
+    subS.s g2,3*VR;                 // g2 = dim1 * dim3 * sizeof(cfloat32_t) - 3 * LINE_SIZE = dim3 << 8 - 3 * VR (a1 pointer offset)
+    sl g3, g0, 7;                   // g3 = dim2 * 2 DMEM lines = dim2 * 128 = dim2 << 7 (a0 pointer modulo range)        
+    mv  a5, 0;                      // a5 = 0 used to update a1
+    mv  a6, (4*VR)*UPHW;            // a6 = 256 used to update a1
+    set.range a0,a0,g3;             // Set modulo addressing for a0 (input pointer)
+    
+    clr.VRA;
+    set.VRArange1 rS0, 0, HVR; 
+    
+    ld.laddr [a0]+1;                                                                       mvB a4,a1;
+    ld.laddr [a1]+1;                                                                       set.VRAincr rS0, HVR;                        
+    ld.laddr [a1]+1;                                                                       setB.VRAptr rS1,1*VR;           
+    ld.laddr [a0]+1;    ld.normal R0;                                                      
+    ld.laddr [a1]+1;    ld.normal R1;                                                      set.prec half, single, single, single, single;
+    ld       [a1]+g2;   ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;         
+    ld.laddr [a0]+1;    ld.normal R0;    rd S0; rd S1; rd S2;                              setB.VRAptr rV,4*VR;                             
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;                     setB.VRAptr rS2,4*VR;     
+                        ld.normal R1;    rd S0; rd S1; rd S2;    cmad;                                                                                                                                  
+    ld.laddr [a1]+1;    ld.normal R0;    rd S0; rd S1; rd S2;                                                                                  setB.loop g1, MS1, ME1;
+                        ld.normal R1;                            cmad;                     subS.z g0,2;                              
+MS1:ld.laddr [a0]+1;                                                      wr.hlinecplx;    set.Smode S0hlinecplx, S1hlinecplx, S2hlinecplx;    loop_begin;                                             
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                        setB.loop g0, LS1, LE1;                                                          
+    ld       [a1]+g2;                    rd S0; rd S1; rd S2;                              mvB a7, a6;                                                                                    
+LS1:ld.laddr [a0]+1;    ld.normal R0;                            cmad;                     set.prec half, single, single, single, single;      loop_begin;     
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;                                                                          
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;             wr.hlinecplx;                                                                                     
+                        ld.normal R0;    rd S0; rd S1; rd S2;                              add a4,a4,a7;                                                                    // Increment a4 with 4x64 only 1st iter
+    ld.laddr [a0]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;    mvB a7, a5;                                                  
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                  
+LE1:ld       [a1]+g2;                    rd S0; rd S1; rd S2;                              set.prec half, single, single, single, half;        loop_end;       
+    ld.laddr [a0]+1;    ld.normal R0;                            cmad;                     mvB a1, a4;
+    ld.laddr [a1]+1;    ld.normal R1;                                     wr.hlinecplx;                                                              
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;             wr.hlinecplx;                                                               
+    ld.laddr [a0]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;                     set.VRAincr rV, HVR;
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;                     set.prec half, single, single, single, single;
+    ld       [a1]+g2;   ld.normal R1;    rd S0; rd S1; rd S2;    cmad;                     set.Smode S0hlinecplx, S1hlinecplx, S2zeros;                                                          
+    ld.laddr [a0]+1;    ld.normal R0;    rd S0; rd S1; rd S2;             wr.hlinecplx;    setB.VRAptr rSt,4;                                              
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;    setB.VRAptr rV,4*VR;
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                                                                            
+    ld.laddr [a1]+1;    ld.normal R0;    rd S0; rd S1; rd S2;             wr.hlinecplx;    set.VRAincr rV,0;                                                                                                                         
+ME1:st.laddr [a2]+1;    ld.normal R1;                            cmad;                     setB.VRAptr rV,4*VR;                                loop_end; 
+                                                                          
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+    
+_mat_bmult_64xd2xd3_chfl_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_64xd2xd3_chfx_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_64xd2xd3_chfx_csp_chfl_asm
+    .type _mat_bmult_64xd2xd3_chfx_csp_chfl_asm, @function
+    .size _mat_bmult_64xd2xd3_chfx_csp_chfl_asm, _mat_bmult_64xd2xd3_chfx_csp_chfl_asm_end -_mat_bmult_64xd2xd3_chfx_csp_chfl_asm
+_mat_bmult_64xd2xd3_chfx_csp_chfl_asm:
+
+    // -----------------------------------------------------------------------------
+    // 1st loop (innermost): #OUT lines            -> dim1 = 64
+    // 2nd loop (next):      #VEC (input streams)  -> dim2 >= 3
+    // 3rd loop (outermost): #OUT (output streams) -> dim3 >= 1   
+    // ----------------------------------------------------------------------------- 
+ 
+    sl g2, g1, 8;
+    subS.s g2,3*VR;                 // g2 = dim1 * dim3 * sizeof(cfloat32_t) - 3 * LINE_SIZE = dim3 << 8 - 3 * VR (a1 pointer offset)
+    sl g3, g0, 7;                   // g3 = dim2 * 2 DMEM lines = dim2 * 128 = dim2 << 7 (a0 pointer modulo range)        
+    mv  a5, 0;                      // a5 = 0 used to update a1
+    mv  a6, (4*VR)*UPHW;            // a6 = 256 used to update a1
+    set.range a0,a0,g3;             // Set modulo addressing for a0 (input pointer)
+    
+    clr.VRA;
+    set.VRArange1 rS0, 0, HVR; 
+    
+    ld.laddr [a0]+1;                                                                       mvB a4,a1;
+    ld.laddr [a1]+1;                                                                       set.VRAincr rS0, HVR;                        
+    ld.laddr [a1]+1;                                                                       setB.VRAptr rS1,1*VR;           
+    ld.laddr [a0]+1;    ld.normal R0;                                                      
+    ld.laddr [a1]+1;    ld.normal R1;                                                      set.prec half_fixed, single, single, single, single;
+    ld       [a1]+g2;   ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;         
+    ld.laddr [a0]+1;    ld.normal R0;    rd S0; rd S1; rd S2;                              setB.VRAptr rV,4*VR;                             
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;                     setB.VRAptr rS2,4*VR;     
+                        ld.normal R1;    rd S0; rd S1; rd S2;    cmad;                                                                                                                                  
+    ld.laddr [a1]+1;    ld.normal R0;    rd S0; rd S1; rd S2;                                                                                   setB.loop g1, MS2, ME2;
+                        ld.normal R1;                            cmad;                     subS.z g0,2;                              
+MS2:ld.laddr [a0]+1;                                                      wr.hlinecplx;    set.Smode S0hlinecplx, S1hlinecplx, S2hlinecplx;     loop_begin;                                             
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                         setB.loop g0, LS2, LE2;                                                          
+    ld       [a1]+g2;                    rd S0; rd S1; rd S2;                              mvB a7, a6;                                                                                    
+LS2:ld.laddr [a0]+1;    ld.normal R0;                            cmad;                     set.prec half_fixed, single, single, single, single; loop_begin;     
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;                                                                          
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;             wr.hlinecplx;                                                                                     
+                        ld.normal R0;    rd S0; rd S1; rd S2;                              add a4,a4,a7;                                                                 // Increment a4 with 4x64 only 1st iter
+    ld.laddr [a0]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;    mvB a7, a5;                                                  
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                  
+LE2:ld       [a1]+g2;                    rd S0; rd S1; rd S2;                              set.prec half_fixed, single, single, single, half;   loop_end;       
+    ld.laddr [a0]+1;    ld.normal R0;                            cmad;                     mvB a1, a4;
+    ld.laddr [a1]+1;    ld.normal R1;                                     wr.hlinecplx;                                                              
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;             wr.hlinecplx;                                                               
+    ld.laddr [a0]+1;    ld.normal R0;    rd S0; rd S1; rd S2;    cmad;                     set.VRAincr rV, HVR;
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;                     set.prec half_fixed, single, single, single, single;
+    ld       [a1]+g2;   ld.normal R1;    rd S0; rd S1; rd S2;    cmad;                     set.Smode S0hlinecplx, S1hlinecplx, S2zeros;                                                          
+    ld.laddr [a0]+1;    ld.normal R0;    rd S0; rd S1; rd S2;             wr.hlinecplx;    setB.VRAptr rSt,4;                                              
+    ld.laddr [a1]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;    setB.VRAptr rV,4*VR;
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1; rd S2;    cmad;    wr.hlinecplx;                                                                                                            
+    ld.laddr [a1]+1;    ld.normal R0;    rd S0; rd S1; rd S2;             wr.hlinecplx;    set.VRAincr rV,0;                                                                                                                         
+ME2:st.laddr [a2]+1;    ld.normal R1;                            cmad;                     setB.VRAptr rV,4*VR;                                 loop_end; 
+                                                                          
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+    
+_mat_bmult_64xd2xd3_chfx_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_d1x2xd3_chfl_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_d1x2xd3_chfl_csp_chfl_asm
+    .type _mat_bmult_d1x2xd3_chfl_csp_chfl_asm, @function
+    .size _mat_bmult_d1x2xd3_chfl_csp_chfl_asm, _mat_bmult_d1x2xd3_chfl_csp_chfl_asm_end -_mat_bmult_d1x2xd3_chfl_csp_chfl_asm
+_mat_bmult_d1x2xd3_chfl_csp_chfl_asm:
+
+    // -----------------------------------------------------------------------------
+    // 1st loop (innermost): #IN (# input stream)   -> dim2 = 2
+    // 2nd loop (outermost): OUT lines              -> dim1 = 32 x k
+    // 2nd loop (outermost): #OUT (# output stream) -> dim3 >= 1  
+    // ----------------------------------------------------------------------------- 
+    
+    sl g2,g0,1;                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    mvB a3,g2;
+    mpy g3,g0,g1;                   // g3 = dim1 * dim3
+    add a3,a3,a0;
+    set.range a0,a0,g2;             // Set modulo addresing for a0 (1st input stream)
+    set.range a3,a3,g2;             // Set modulo addresing for a3 (2nd input stream)
+    sl g3,g3,2;                     // g3 = dim1 * dim3 * 4;      -> 1st a1 update (+)
+    subD g4,g3,VR;                  // g4 = dim1 * dim3 * 4 - 64; -> 2nd a1 update (-)
+    
+    ld.laddr [a0]+1;                                                                       clr.VRA;
+    ld.laddr [a3]+1;                                                                       setB.VRAptr rS1,2*VR;
+    ld       [a1]+g3;                                                                      set.prec half, single, single, single, half;
+    ld       [a1]-g4;   ld.normal R0;                                                      set.Smode S0hlinecplx, S1hlinecplx, S2zeros;
+                        ld.normal R1;                                                      sr g5,g3,7;                                      // Loop count: g5 = (dim1 * dim3) / 32 = g3 >> 7
+    ld       [a1]+g3;   ld.normal R2;                                                      setB.VRAptr rS0,0*VR;
+    ld       [a1]-g4;   ld.normal R2;    rd S0; rd S1; rd S2;                              setB.VRAptr rS0,1*VR;                        
+    ld.laddr [a0]+1;                     rd S0; rd S1;                                 
+    ld.laddr [a3]+1;    ld.normal R2;                            cmad;                     setB.VRAptr rS0,0*VR+HVR;
+    ld       [a1]+g3;   ld.normal R2;    rd S0; rd S1;           cmac;                     setB.VRAptr rS0,1*VR+HVR;
+    ld       [a1]-g4;   ld.normal R0;    rd S0; rd S1;                                                                                      setB.loop g5, LS3, LE3;
+                        ld.normal R1;                            cmad;                     setA.VRAptr  rV,3*VR; set.VRAincr  rV,HVR;
+LS3:ld       [a1]+g3;   ld.normal R2;                            cmac;                     setB.VRAptr rS0,0*VR;                            loop_begin;
+    ld       [a1]-g4;   ld.normal R2;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rS0,1*VR;   
+    ld.laddr [a0]+1;                     rd S0; rd S1;       
+    ld.laddr [a3]+1;    ld.normal R2;                            cmad;                     setB.VRAptr rS0,0*VR+HVR;
+    ld       [a1]+g3;   ld.normal R2;    rd S0; rd S1;           cmac;    wr.hlinecplx;    setB.VRAptr rS0,1*VR+HVR;                  
+    ld       [a1]-g4;   ld.normal R0;    rd S0; rd S1;                                     setB.VRAptr rSt,3;                                             
+LE3:st.laddr [a2]+1;    ld.normal R1;                            cmad;                     setB.VRAptr  rV,3*VR;                            loop_end;
+
+    mv a0,0;      rts;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+    set.range a3,a0,0;              // Reset modulo addressing for a3    
+
+_mat_bmult_d1x2xd3_chfl_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_d1x2xd3_chfx_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_d1x2xd3_chfx_csp_chfl_asm
+    .type _mat_bmult_d1x2xd3_chfx_csp_chfl_asm, @function
+    .size _mat_bmult_d1x2xd3_chfx_csp_chfl_asm, _mat_bmult_d1x2xd3_chfx_csp_chfl_asm_end -_mat_bmult_d1x2xd3_chfx_csp_chfl_asm
+_mat_bmult_d1x2xd3_chfx_csp_chfl_asm:
+
+    // -----------------------------------------------------------------------------
+    // 1st loop (innermost): #IN (# input stream)   -> dim2 = 2
+    // 2nd loop (outermost): OUT lines              -> dim1 = 32 x k
+    // 2nd loop (outermost): #OUT (# output stream) -> dim3 >= 1  
+    // -----------------------------------------------------------------------------       
+    
+    sl g2,g0,1;                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    mvB a3,g2;
+    mpy g3,g0,g1;                   // g3 = dim1 * dim3
+    add a3,a3,a0;
+    set.range a0,a0,g2;             // Set modulo addresing for a0 (1st input stream)
+    set.range a3,a3,g2;             // Set modulo addresing for a3 (2nd input stream)
+    sl g3,g3,2;                     // g3 = dim1 * dim3 * 4;      -> 1st a1 update (+)
+    subD g4,g3,VR;                  // g4 = dim1 * dim3 * 4 - 64; -> 2nd a1 update (-)
+    
+    ld.laddr [a0]+1;                                                                       clr.VRA;
+    ld.laddr [a3]+1;                                                                       setB.VRAptr rS1,2*VR;
+    ld       [a1]+g3;                                                                      set.prec half_fixed, single, single, single, half;
+    ld       [a1]-g4;   ld.normal R0;                                                      set.Smode S0hlinecplx, S1hlinecplx, S2zeros;
+                        ld.normal R1;                                                      sr g5,g3,7;                                      // Loop count: g5 = (dim1 * dim3) / 32 = g3 >> 7
+    ld       [a1]+g3;   ld.normal R2;                                                      setB.VRAptr rS0,0*VR;
+    ld       [a1]-g4;   ld.normal R2;    rd S0; rd S1; rd S2;                              setB.VRAptr rS0,1*VR;                        
+    ld.laddr [a0]+1;                     rd S0; rd S1;                                 
+    ld.laddr [a3]+1;    ld.normal R2;                            cmad;                     setB.VRAptr rS0,0*VR+HVR;
+    ld       [a1]+g3;   ld.normal R2;    rd S0; rd S1;           cmac;                     setB.VRAptr rS0,1*VR+HVR;
+    ld       [a1]-g4;   ld.normal R0;    rd S0; rd S1;                                                                                      setB.loop g5, LS4, LE4;
+                        ld.normal R1;                            cmad;                     setA.VRAptr  rV,3*VR; set.VRAincr  rV,HVR;
+LS4:ld       [a1]+g3;   ld.normal R2;                            cmac;                     setB.VRAptr rS0,0*VR;                            loop_begin;
+    ld       [a1]-g4;   ld.normal R2;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rS0,1*VR;   
+    ld.laddr [a0]+1;                     rd S0; rd S1;       
+    ld.laddr [a3]+1;    ld.normal R2;                            cmad;                     setB.VRAptr rS0,0*VR+HVR;
+    ld       [a1]+g3;   ld.normal R2;    rd S0; rd S1;           cmac;    wr.hlinecplx;    setB.VRAptr rS0,1*VR+HVR;                  
+    ld       [a1]-g4;   ld.normal R0;    rd S0; rd S1;                                     setB.VRAptr rSt,3;                                             
+LE4:st.laddr [a2]+1;    ld.normal R1;                            cmad;                     setB.VRAptr  rV,3*VR;                            loop_end;
+
+    mv a0,0;      rts;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+    set.range a3,a0,0;              // Reset modulo addressing for a3    
+
+_mat_bmult_d1x2xd3_chfx_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_d1x1xd3_chfl_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_d1x1xd3_chfl_csp_chfl_asm
+    .type _mat_bmult_d1x1xd3_chfl_csp_chfl_asm, @function
+    .size _mat_bmult_d1x1xd3_chfl_csp_chfl_asm, _mat_bmult_d1x1xd3_chfl_csp_chfl_asm_end -_mat_bmult_d1x1xd3_chfl_csp_chfl_asm
+_mat_bmult_d1x1xd3_chfl_csp_chfl_asm:
+
+    // -----------------------------------------------------------------------------
+    // 1st loop (innermost): #IN (# input stream)   -> dim2 = 1
+    // 2nd loop (outermost): #OUT (# output stream) -> dim3 >= 1
+    // 2nd loop (outermost): OUT lines              -> dim1 = 32 x k
+    // -----------------------------------------------------------------------------
+    
+    mpy g3,g0,g1;                   // g3 = dim1 * dim3
+    sl g2,g0,1;                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    set.range a0,a0,g2;             // Set modulo addresing for a0 (1st input stream)                             
+    
+    ld.laddr [a0]+1;                                                                       clr.VRA;
+    ld.laddr [a1]+1;                                                                       setB.VRAptr rS1,1*VR;
+    ld.laddr [a1]+1;                                                                       set.VRAincr rS0, HVR;
+                        ld.normal R0;                                                      set.VRArange1 rS0, 0, HVR;
+    ld.laddr [a0]+1;    ld.normal R1;                                                      set.prec half, single, single, single, half;
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;
+    ld.laddr [a1]+1;                     rd S0; rd S1; 
+                        ld.normal R0;                            cmad;                     sr g3,g3,5;            // Loop count: g3 = dim1 * dim3 / 32
+    ld.laddr [a0]+1;    ld.normal R1;                            cmad;                     setB.VRAptr rV,4*VR;
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1;                                     set.VRAincr rV, HVR;
+    ld.laddr [a1]+1;                     rd S0; rd S1;                                                            setB.loop g3, LS5, LE5;
+                        ld.normal R0;                            cmad;    wr.hlinecplx;    setB.VRAptr rSt,4;
+LS5:ld.laddr [a0]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;    setB.VRAptr rV,4*VR;   loop_begin;
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1;
+    ld.laddr [a1]+1;                     rd S0; rd S1;
+LE5:st.laddr [a2]+1;    ld.normal R0;                            cmad;    wr.hlinecplx;                           loop_end;   
+    
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+
+_mat_bmult_d1x1xd3_chfl_csp_chfl_asm_end:
+
+// -----------------------------------------------------------------------------
+// Subroutine name: mat_bmult_d1x1xd3_chfx_csp_chfl_asm
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _mat_bmult_d1x1xd3_chfx_csp_chfl_asm
+    .type _mat_bmult_d1x1xd3_chfx_csp_chfl_asm, @function
+    .size _mat_bmult_d1x1xd3_chfx_csp_chfl_asm, _mat_bmult_d1x1xd3_chfx_csp_chfl_asm_end -_mat_bmult_d1x1xd3_chfx_csp_chfl_asm
+_mat_bmult_d1x1xd3_chfx_csp_chfl_asm:
+
+    // -----------------------------------------------------------------------------
+    // 1st loop (innermost): #IN (# input stream)   -> dim2 = 1
+    // 2nd loop (outermost): #OUT (# output stream) -> dim3 >= 1
+    // 2nd loop (outermost): OUT lines              -> dim1 = 32 x k
+    // -----------------------------------------------------------------------------
+    
+    mpy g3,g0,g1;                   // g3 = dim1 * dim3
+    sl g2,g0,1;                     // g2 = dim1 * 2 (input stream size, modulo addresing range)
+    set.range a0,a0,g2;             // Set modulo addresing for a0 (1st input stream)                             
+    
+    ld.laddr [a0]+1;                                                                       clr.VRA;
+    ld.laddr [a1]+1;                                                                       setB.VRAptr rS1,1*VR;
+    ld.laddr [a1]+1;                                                                       set.VRAincr rS0, HVR;
+                        ld.normal R0;                                                      set.VRArange1 rS0, 0, HVR;
+    ld.laddr [a0]+1;    ld.normal R1;                                                      set.prec half_fixed, single, single, single, half;
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;
+    ld.laddr [a1]+1;                     rd S0; rd S1; 
+                        ld.normal R0;                            cmad;                     sr g3,g3,5;            // Loop count: g3 = dim1 * dim3 / 32
+    ld.laddr [a0]+1;    ld.normal R1;                            cmad;                     setB.VRAptr rV,4*VR;
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1;                                     set.VRAincr rV, HVR;
+    ld.laddr [a1]+1;                     rd S0; rd S1;                                                            setB.loop g3, LS6, LE6;
+                        ld.normal R0;                            cmad;    wr.hlinecplx;    setB.VRAptr rSt,4;
+LS6:ld.laddr [a0]+1;    ld.normal R1;                            cmad;    wr.hlinecplx;    setB.VRAptr rV,4*VR;   loop_begin;
+    ld.laddr [a1]+1;    ld.normal R1;    rd S0; rd S1;
+    ld.laddr [a1]+1;                     rd S0; rd S1;
+LE6:st.laddr [a2]+1;    ld.normal R0;                            cmad;    wr.hlinecplx;                           loop_end;   
+    
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;              // Reset modulo addressing for a0 
+
+_mat_bmult_d1x1xd3_chfx_csp_chfl_asm_end:

@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors
+
+// ===============================================================================
+//! @file           fd_qec.sx
+//! @brief          Freqyency domain quadrature correcion  ASSEMBLY source file
+//! @author         NXP Semiconductors.
+// ===============================================================================
+// -------------------------------------------------------------------------------
+// Subroutine name: fd_qec
+//
+// Subroutines called by this subroutine: none
+//  a0 - pOutput0
+//  a1 - pInput0
+//  a2 - pInput1
+//  a3 - pInput2
+//  g0 - size
+//
+// Registers usage:
+//    as registers modified: a4 
+//    g registers modified: g1, g2
+//  
+// Cycles: size/32*6+37 
+// -----------------------------------------------------------------------------
+						
+ .global _fd_qec						
+ .type _fd_qec, @function						
+ _fd_qec:						
+ sr g1, g0, 5;  						
+ sub  g1, g1, 2;  			
+ sl g2, g0, 1;  				
+ mv a4, g2; 				
+ add a4, a3, a4;																clr.vra;	 	
+ set.VRAincr rV,32; 	
+ setB.VRAptr rSt, 4;	
+ set.VRAincr rS0,64; 	
+ ld.laddr [a1]+1;   															set.prec  half_fixed, half_fixed, half_fixed, single, half_fixed;	
+ ld.laddr [a2]+1;   															setB.VRAptr rS1, 128;                                                       	
+ ld.laddr [a3]+1;   					 										set.VRAincr rS1,64; 	
+ ld.laddr [a4]+1;   	ld.normal R0;   										set.Smode S0hlinecplx, S1hlinecplx, S2zeros;    	
+ set.loop g1, 6;		ld.normal R1;   					
+						ld.normal R2;   										set.VRArange1 rV, 256, 288;	
+ ld.laddr [a1]+1;   	ld.normal R3;   	rd S0; rd S1; rd S2;				setB.VRAptr rV, 256;                                                       	
+ ld.laddr [a2]+1;   						rd S0; rd S1; rd S2;				setB.VRAptr rS0, 32;                                                   
+ ld.laddr [a3]+1;   												cmad; 		setB.VRAptr rS1, 160;                                                       	
+ ld.laddr [a4]+1;   	ld.normal R0;   	rd S0; rd S1; rd S2;	cmac; 			
+						ld.normal R1;   	rd S0; rd S1; rd S2;				setB.VRAptr rS0, 0;                                                       	
+						ld.normal R2;   							cmad; 		setB.VRAptr rS1, 128;                                                       	
+ ld.laddr [a1]+1;   	ld.normal R3;   	rd S0; rd S1; rd S2;	cmac; 			
+ ld.laddr [a2]+1;   						rd S0; rd S1; rd S2;		wr.hlinecplx;  	setB.VRAptr rS0, 32;                                                       	
+ ld.laddr [a3]+1;   												cmad; 				setB.VRAptr rS1, 160;                                                       	
+ ld.laddr [a4]+1;   	ld.normal R0;   	rd S0; rd S1; rd S2;	cmac; 			
+						ld.normal R1;   	rd S0; rd S1; rd S2;		wr.hlinecplx;  	setB.VRAptr rS0, 0;                                                       	
+ st.laddr [a0]+1;   	ld.normal R2;   							cmad; 				setB.VRAptr rS1, 128;                  loop_begin
+ ld.laddr [a1]+1;   	ld.normal R3;   	rd S0; rd S1; rd S2;	cmac; 			
+ ld.laddr [a2]+1;   						rd S0; rd S1; rd S2;		wr.hlinecplx;  	setB.VRAptr rS0, 32;                                                       	
+ ld.laddr [a3]+1;   												cmad; 				setB.VRAptr rS1, 160;                                                       	
+ ld.laddr [a4]+1;   	ld.normal R0;   	rd S0; rd S1; rd S2;	cmac; 			
+						ld.normal R1;   	rd S0; rd S1; rd S2;		wr.hlinecplx;  	setB.VRAptr rS0, 0;                     loop_end
+ st.laddr [a0]+1;   	ld.normal R2;   							cmad; 				setB.VRAptr rS1, 128;                                                       	
+						ld.normal R3;   	rd S0; rd S1; rd S2;	cmac; 			
+											rd S0; rd S1; rd S2;		wr.hlinecplx;  	setB.VRAptr rS0, 32;                                                       	
+																	cmad; 				setB.VRAptr rS1, 160;                                                       	
+											rd S0; rd S1; rd S2;	cmac; 			
+											rd S0; rd S1; rd S2;		wr.hlinecplx;  		
+ st.laddr [a0]+1;   												cmad; 			
+ 																	cmac; 			
+																		wr.hlinecplx;  		 
+ nop;						
+ rts;						
+																		wr.hlinecplx;  		
+ st.laddr [a0]+1;   						
+ .size _fd_qec, . -_fd_qec						

@@ -1,0 +1,260 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors All rights reserved
+
+// =============================================================================
+//! @file           vec_bmult.sx
+//! @brief          Frequency domain correction assembly source file.
+//! @author         NXP Semiconductors.
+// =============================================================================
+#include "vspa.h"
+#include "freq_domain_corr.h"
+
+#define  VR (__AU_COUNT__*4)       // Number of half words for one full VRA register (full DMEM line)
+#define HVR (__AU_COUNT__*2)       // Number of half words for one half VRA register (half DMEM line)
+
+#define OFF64       FREQ_DOMAIN_CORR_STREAM_OFF_64SBC-VR
+#define OFF128      FREQ_DOMAIN_CORR_STREAM_OFF_128SBC-3*VR
+#define OFF256      FREQ_DOMAIN_CORR_STREAM_OFF_256SBC-7*VR
+#define OFF512      FREQ_DOMAIN_CORR_STREAM_OFF_256SBC-15*VR
+#define OFF1024     FREQ_DOMAIN_CORR_STREAM_OFF_1024SBC-31VR
+
+// -----------------------------------------------------------------------------
+// ABI:
+// a0 - common correction vector pointer (complex Half Precision)
+// a1 - input vectors pointer            (complex Half Precision)
+// g0 - number of vectors
+// -----------------------------------------------------------------------------   
+ 
+// -----------------------------------------------------------------------------
+// Subroutine name: vec_mult_64chp
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _vec_mult_64chp
+    .type _vec_mult_64chp, @function
+    .size _vec_mult_64chp, _vec_mult_64chp_end -_vec_mult_64chp
+_vec_mult_64chp:
+
+    ld [a0]+(VR)*UPHW;                                                                     clr.VRA;
+    ld [a0]+0;                                                                             mvB a2,a1;
+    ld [a1]+(VR)*UPHW;                                                                     setB.VRAincr rS0,HVR;
+                        ld.normal R0;                                                      setB.VRAptr  rS1,2*VR;
+    ld [a1]+(OFF64)*UPHW;ld.normal R1;                                                      setB.VRAincr rS1,HVR;
+                        ld.normal R2;                                                      set.prec half, half, half, single, half;
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;  
+                        ld.normal R3;    rd S0; rd S1;                                     set.VRArange1 rS0,0*VR,1*VR+HVR;
+    ld [a1]+(OFF64)*UPHW;                rd S0; rd S1;           cmad;
+                        ld.normal R2;    rd S0; rd S1;           cmad;                     setA.VRAptr  rV,4*VR;        setB.VRAptr rS1,2*VR;     
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1;           cmad;                     setB.VRAincr rV,HVR;
+                        ld.normal R3;    rd S0; rd S1;           cmad;                     setA.VRAptr rSt,4;           setB.loop g0,4;
+    ld [a1]+(OFF64)*UPHW;                rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAincr rSt,1;
+    ld [a1]+(VR)*UPHW;  ld.normal R2;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS1,2*VR;        loop_begin;
+    st [a2]+(VR)*UPHW;                   rd S0; rd S1;           cmad;    wr.hlinecplx; 
+    ld [a1]+(OFF64)*UPHW;ld.normal R3;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rV,4*VR;
+    st [a2]+(OFF64)*UPHW;                rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rSt,4;           loop_end;                         
+
+    rts;
+    nop;
+    nop;  
+    
+_vec_mult_64chp_end:       
+
+// -----------------------------------------------------------------------------
+// Subroutine name: vec_mult_128chp
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _vec_mult_128chp
+    .type _vec_mult_128chp, @function
+    .size _vec_mult_128chp, _vec_mult_128chp_end -_vec_mult_128chp
+_vec_mult_128chp:
+
+    ld [a0]+(VR)*UPHW;                                                                     clr.VRA;
+    ld [a0]+(VR)*UPHW;                                                                     mvB a2,a1;
+    ld [a0]+(VR)*UPHW;                                                                     setB.VRAincr rS0,HVR;
+    ld [a0]+(VR)*UPHW;  ld.normal R0;                                                      setB.VRAptr rS1,4*VR;
+    ld [a1]+(VR)*UPHW;  ld.normal R1;                                                      setB.VRAincr rS1,HVR;
+                        ld.normal R2; 
+    ld [a1]+(VR)*UPHW;  ld.normal R3; 
+                        ld.normal R4;                                                      set.prec half, half, half, single, half;    
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;  
+                        ld.normal R5;    rd S0; rd S1;                                     set.VRArange1 rS0,0*VR,3*VR+HVR;
+    ld [a1]+(OFF128)*UPHW;               rd S0; rd S1;           cmad;
+                        ld.normal R4;    rd S0; rd S1;           cmad;                     setB.VRAptr rS1,4*VR;                           
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1;           cmad;                     setB.VRAptr  rV,6*VR;
+                        ld.normal R5;    rd S0; rd S1;           cmad;                     setB.VRAincr  rV,HVR;        setA.VRAincr rSt,1;
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1;           cmad;    wr.hlinecplx;                                 setB.loop g0,8;
+                        ld.normal R4;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS1,4*VR;        
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rSt,6;           loop_begin;
+    st [a2]+(VR)*UPHW;  ld.normal R5;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr  rV,6*VR;
+    ld [a1]+(OFF128)*UPHW;               rd S0; rd S1;           cmad;    wr.hlinecplx;
+    st [a2]+(VR)*UPHW;  ld.normal R4;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS1,4*VR; 
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rSt,6;   
+    st [a2]+(VR)*UPHW;  ld.normal R5;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr  rV,6*VR;
+    ld [a1]+(VR)*UPHW;                   rd S0; rd S1;           cmad;    wr.hlinecplx;
+    st [a2]+(OFF128)*UPHW;ld.normal R4;    rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS1,4*VR;        loop_end;
+
+    rts;
+    nop;
+    nop; 
+    
+_vec_mult_128chp_end:  
+
+// -----------------------------------------------------------------------------
+// Subroutine name: vec_mult_256chp
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _vec_mult_256chp
+    .type _vec_mult_256chp, @function
+    .size _vec_mult_256chp, _vec_mult_256chp_end -_vec_mult_256chp
+_vec_mult_256chp:
+    
+    set.range a0,a0,(FREQ_DOMAIN_CORR_NUM_LINES_256SBC*VR)*UPHW;
+    ld.laddr [a0]+1;                                                                       clr.VRA;  
+    ld.laddr [a1]+1;                                                                       setB.VRAincr rS0,HVR;
+    ld.laddr [a0]+1;                                                                       setB.VRAptr  rS1,2*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                                                      setB.VRAincr rS1,HVR;
+                        ld.normal R2;                                                      set.prec half, half, half, single, half;      setA.VRAptr  rV,4*VR;                          
+                        ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;  setA.VRAptr rSt,4;                                
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                                                                                   setB.loop g0,24; 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;                     setB.VRAincr rV,HVR;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;                     setB.VRAptr rS0,0*VR; 
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;
+                        ld.normal R2;                            cmad;                     add a2,a1,(-4*VR)*UPHW;                                        
+                        ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    mvS.z g1,(FREQ_DOMAIN_CORR_NUM_LINES_256SBC-6)/2;                                              
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAincr rSt,1;                            loop_begin;                                                                 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;                             setB.loop g1,6;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;        
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;    loop_begin;          
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;            
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                              
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;              
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;    loop_end;
+    ld  [a1]+(OFF256)*UPHW;ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;           
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                           
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;           
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                                 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st  [a2]+(OFF256)*UPHW;ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;                             loop_end;  
+    
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;
+    
+_vec_mult_256chp_end: 
+
+// -----------------------------------------------------------------------------
+// Subroutine name: vec_mult_512chp
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _vec_mult_512chp
+    .type _vec_mult_512chp, @function
+    .size _vec_mult_512chp, _vec_mult_512chp_end -_vec_mult_512chp
+_vec_mult_512chp:
+    
+    set.range a0,a0,(FREQ_DOMAIN_CORR_NUM_LINES_512SBC*VR)*UPHW;
+    ld.laddr [a0]+1;                                                                       clr.VRA;  
+    ld.laddr [a1]+1;                                                                       setB.VRAincr rS0,HVR;
+    ld.laddr [a0]+1;                                                                       setB.VRAptr  rS1,2*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                                                      setB.VRAincr rS1,HVR;
+                        ld.normal R2;                                                      set.prec half, half, half, single, half;      setA.VRAptr  rV,4*VR;                          
+                        ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;  setA.VRAptr rSt,4;                                
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                                                                                   setB.loop g0,24; 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;                     setB.VRAincr rV,HVR;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;                     setB.VRAptr rS0,0*VR; 
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;
+                        ld.normal R2;                            cmad;                     add a2,a1,(-4*VR)*UPHW;                                        
+                        ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    mvS.z g1,(FREQ_DOMAIN_CORR_NUM_LINES_512SBC-6)/2;                                              
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAincr rSt,1;                            loop_begin;                                                                 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;                             setB.loop g1,6;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;        
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;    loop_begin;          
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;            
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                              
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;              
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;    loop_end;
+    ld  [a1]+(OFF256)*UPHW;ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;           
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                           
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;           
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                                 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st  [a2]+(OFF256)*UPHW;ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;                             loop_end;  
+    
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;
+    
+_vec_mult_512chp_end: 
+
+// -----------------------------------------------------------------------------
+// Subroutine name: vec_mult_1024chp
+// -----------------------------------------------------------------------------
+    .section .text
+    .global _vec_mult_1024chp
+    .type _vec_mult_1024chp, @function
+    .size _vec_mult_1024chp, _vec_mult_1024chp_end -_vec_mult_1024chp
+_vec_mult_1024chp:
+    
+    set.range a0,a0,(FREQ_DOMAIN_CORR_NUM_LINES_1024SBC*VR)*UPHW;
+    ld.laddr [a0]+1;                                                                       clr.VRA;  
+    ld.laddr [a1]+1;                                                                       setB.VRAincr rS0,HVR;
+    ld.laddr [a0]+1;                                                                       setB.VRAptr  rS1,2*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                                                      setB.VRAincr rS1,HVR;
+                        ld.normal R2;                                                      set.prec half, half, half, single, half;      setA.VRAptr  rV,4*VR;                          
+                        ld.normal R1;    rd S0; rd S1; rd S2;                              set.Smode S0hlinecplx, S1hlinecplx, S2zeros;  setA.VRAptr rSt,4;                                
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                                                                                   setB.loop g0,24; 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;                     setB.VRAincr rV,HVR;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;                     setB.VRAptr rS0,0*VR; 
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;
+                        ld.normal R2;                            cmad;                     add a2,a1,(-4*VR)*UPHW;                                        
+                        ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    mvS.z g1,(FREQ_DOMAIN_CORR_NUM_LINES_1024SBC-6)/2;                                              
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAincr rSt,1;                            loop_begin;                                                                 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;                             setB.loop g1,6;
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;        
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;    loop_begin;          
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;            
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                              
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;              
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;    loop_end;
+    ld  [a1]+(OFF256)*UPHW;ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;           
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                           
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st.laddr [a2]+1;    ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;           
+    ld.laddr [a0]+1;    ld.normal R3;    rd S0; rd S1;                    wr.hlinecplx;                                                                                                 
+    ld.laddr [a1]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    
+    ld.laddr [a0]+1;                     rd S0; rd S1;           cmad;    wr.hlinecplx;    setB.VRAptr rS0,0*VR;
+    ld.laddr [a1]+1;    ld.normal R0;                            cmad;                     setB.VRAptr rS1,2*VR;                 
+    st.laddr [a2]+1;    ld.normal R2;                            cmad;                     setB.VRAptr  rV,4*VR;                
+    st  [a2]+(OFF256)*UPHW;ld.normal R1;    rd S0; rd S1;                    wr.hlinecplx;    setB.VRAptr rSt,4;                             loop_end;  
+    
+    rts;
+    mv a0,0;
+    set.range a0,a0,0;
+    
+_vec_mult_1024chp_end:
+             
+

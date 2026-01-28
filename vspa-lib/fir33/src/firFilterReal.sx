@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductor
+
+	.section .text
+
+/*===================================================================================
+//  Subroutine name: firFilterReal
+//
+//  General Description: FIR filter with odd number of taps
+//
+//===================================================================================*/
+	.global _firFilterReal
+	.type _firFilterReal, @function
+_firFilterReal:
+ 
+ clr.VRA;                   ldA [a2]+0;
+                            ldA.laddr [a0]+1;                            set.Smode S0hword, S1straight, S2zeros;
+                            ldA.laddr [a0]+1;                            set.prec half_fixed, half_fixed, half_fixed, single, half_fixed;
+ 				            ldA.laddr [a0]-1;   	ld.normal R7;
+                                                	ld.h2l R0;
+                  									ld.l2h_h2l R0;
+ set.VRAincr rS0, 1;      	setA.VRAptr rS0, 448;	ld.l2h R1;
+ set.Rot R0R1r2;													ror; rd S2; rd S1; rd S0;
+							ldA.laddr [a0]+1;						ror; rd S1; rd S0;
+ setB.VRAptr rV, 256;		ldA.laddr [a0]+1;						ror; rd S1; rd S0;	rmad;
+ setB.VRAptr rSt, 4;		ldA.laddr [a0]-1;						ror; rd S1; rd S0;	rmac;
+													ld.h2l R2;		ror; rd S1; rd S0;	rmac;
+ set.loop g0, 24;									ld.l2h_h2l R2;	ror; rd S1; rd S0;	rmac;
+													ld.l2h R3;		ror; rd S1; rd S0;	rmac;
+																	ror; rd S1; rd S0;	rmac;						loop_begin;
+ set.loop g1, 1;													ror; rd S1; rd S0;	rmac;
+																	ror; rd S1; rd S0;	rmac;																																		
+																	ror; rd S1; rd S0;	rmac;					loop_begin;	loop_end;
+ setB.VRAptr rS1, 128; 	    setA.VRAptr rS0, 448; 	 			 		 rd S1; rd S0;	rmac;
+ set.Rot R2R3r2;                                  					ror; rd S1; rd S0;	rmac;
+  							ldA.laddr [a0]+1;						ror; rd S1; rd S0;	rmac;
+  							ldA.laddr [a0]+1;						ror; rd S1; rd S0;	rmad;
+  							ldA.laddr [a0]-1;						ror; rd S1; rd S0;	rmac;
+  													ld.h2l R0;		ror; rd S1; rd S0;	rmac;
+  													ld.l2h_h2l R0;	ror; rd S1; rd S0;	rmac;	wr.straight;
+  							stA.laddr [a1]+1;		ld.l2h R1;		ror; rd S1; rd S0;	rmac;
+ set.loop g1, 1; 													ror; rd S1; rd S0;	rmac;
+																	ror; rd S1; rd S0;	rmac;
+                                                					ror; rd S1; rd S0;	rmac;					loop_begin;	loop_end;
+                                                					ror; rd S1; rd S0;	rmac;
+ setB.VRAptr rS1, 0; 	    setA.VRAptr rS0, 448; 	 			 		 rd S1; rd S0;	rmac;
+ set.Rot R0R1r2;                                  					ror; rd S1; rd S0;	rmac;
+  							ldA.laddr [a0]+1;						ror; rd S1; rd S0;	rmac;
+  							ldA.laddr [a0]+1;						ror; rd S1; rd S0;	rmad;
+  							ldA.laddr [a0]-1;						ror; rd S1; rd S0;	rmac;
+  													ld.h2l R2;		ror; rd S1; rd S0;	rmac;
+  													ld.l2h_h2l R2;	ror; rd S1; rd S0;	rmac;	wr.straight;
+  							stA.laddr [a1]+1;		ld.l2h R3;		ror; rd S1; rd S0;	rmac;						loop_end;
+
+ rts;
+ fnop;
+ fnop;
+
+	.size _firFilterReal, .-_firFilterReal
+///////////////////////////////

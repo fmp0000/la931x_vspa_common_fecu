@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors All rights reserved
+
+// =============================================================================
+//! @file           bitRev256.sx
+//! @brief          IPPU procedure to perfrom shiftting and bit-reversal of 256 
+//!                 sub-carriers. 
+//! @author         NXP Semiconductors.
+// =============================================================================
+// bitRev256.sx -- IPPU procedure to perfrom shiftting and bit-reversal of 256
+//                sub-carriers.
+//
+// bitRev256(
+//     vspa_complex_float16 *pOut,
+//     vspa_complex_float16 const *pIn );
+//
+// arg0: pOut       = pointer to the linear output buffer.
+// arg1: pIn        = pointer to bit-reversed input buffer.
+//
+// =============================================================================
+
+    .ippu
+    .global     _ippu_args
+    .type       _ippu_args, %object
+    .icomm      _ippu_args,  (2 * 4)
+
+    .section    .itext
+    .global     _bitRev256
+    .type       _bitRev256, %function
+
+_bitRev256:
+    // -------------------------------------------------------------------------
+    // Load input arguments:
+    // -------------------------------------------------------------------------
+    ld      as1, +0;                          // Load output buffer address.
+    ld      as0, +1;                          // Load input buffer address.
+    
+    // -------------------------------------------------------------------------
+    // Initialize core registers:
+    // -------------------------------------------------------------------------
+    mv      mem_elem_rd_ptr, 0;              // Reset memory read pointer.
+    mv      mem_elem_wr_ptr, 0;              // Reset memory write pointer.
+    mv      r_wr_ptr, 0;                     // Reset register write pointer.
+    mv      r_rd_ptr, 0;                     // Reset register read pointer.
+    
+    // --------------------------------------------------------------------------
+    // bit-reversal
+    // --------------------------------------------------------------------------
+    mv a1, as1;
+    mv a0, as0;
+    set.range a0, as0, 512;
+    set.br a0, fft256;
+    mv m1, 256;
+    mv m0, 64;
+    ld.vcpu [a0]+m1, 0, br, 0, e32;			 // dummy load to offset the input pointer.
+    set.loop 0, 32;
+    mv m1, 510;
+    nop;
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    nop;
+    set.loop 0, 32;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+m0, 0, normal, 0, normal;  // store a 1st line of sub-carriers from R0.
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    nop;
+    set.loop 0, 32;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+m0, 0, normal, 0, normal;  // store a 2nd line of sub-carriers from R0.
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    nop;
+    set.loop 0, 31;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+m0, 0, normal, 0, normal;  // store a 3rd line of sub-carriers from R0.
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    ld.vcpu [a0]-m1, 0, br, +8, e32;
+    nop;
+    set.loop 0, 32;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+m0, 0, normal, 0, normal;  // store a 4th line of sub-carriers from R0.
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    nop;
+    set.loop 0, 32;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+m0, 0, normal, 0, normal;  // store a 5th line of sub-carriers from R0.
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    nop;
+    set.loop 0, 32;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+m0, 0, normal, 0, normal;  // store a 6th line of sub-carriers from R0.
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    nop;
+    set.loop 0, 31;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+m0, 0, normal, 0, normal;  // store a 7th line of sub-carriers from R0.
+    
+    ld.vcpu [a0]+2,  0, br, +8, e32;     loop_begin 0; loop_end 0;
+    ld.vcpu [a0]+0,  0, br, +8, e32;
+    nop;
+    nop;
+    mv      r_wr_ptr, 0;
+    st.vcpu [a1]+0,  0, normal, 0, normal;  // store a 8th line of sub-carriers from R0.
+    mv as0, 0;
+    set.range a0, as0, 0;
+    nop;
+    done;
+    nop;
+    nop;
+
+    .size       _bitRev256, . - _bitRev256

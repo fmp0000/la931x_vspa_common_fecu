@@ -1,0 +1,3 @@
+case 1 : 1case 2 : 1case 3 : 1case 4 : 1case 5 : 1case 6 : 1case 7 : 1
+===
+ nPass/nCase: 7 / 7.

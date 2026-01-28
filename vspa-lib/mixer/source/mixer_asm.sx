@@ -1,0 +1,303 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           mixer_asm.sx
+//! @brief          y = x1.*NCO where x and y in complex 16-bit half-fixed. 
+//! @author         NXP Semiconductors
+// =============================================================================
+
+#include "vspa.h"
+
+    .section .text
+    
+#define WIFI_DIG_RX_IQ_SWAP 0
+
+// For bit-shifting
+#if UPHW==4
+    #define LOG2UPHW 2
+#elif UPHW==2
+    #define LOG2UPHW 1
+#elif UPHW==1
+    #define LOG2UPHW 0
+#else
+    #error "unsupported UPHW"
+#endif
+
+// For bit-shifting
+#if   __AU_COUNT__==4
+    #define LOG2NAU 2
+#elif __AU_COUNT__==8
+    #define LOG2NAU 3
+#elif __AU_COUNT__==16
+    #define LOG2NAU 4
+#elif __AU_COUNT__==32
+    #define LOG2NAU 5
+#elif __AU_COUNT__==64
+    #define LOG2NAU 6
+#else
+    #error "unsupported __AU_COUNT__"
+#endif
+
+// _VR  = # of halfwords of one  VRA register
+// _VRH = # of halfwords of half VRA register
+#define _VR     (__AU_COUNT__*4)
+#define _VRH    (__AU_COUNT__*2)
+
+    .global _mixer_asm
+    .type _mixer_asm, @function
+    .size _mixer_asm, _mixer_asm_end -_mixer_asm    
+_mixer_asm:    
+    
+    // register usage:
+    //
+    // VRA layout:
+    // R0: x
+    // R4R5: y
+    //
+    // rS0: {0,0.5}, incr0.5    
+    // rV:  {4, 4.5, 5, 5.5}, incr0.5
+    // rSt: {4,5}
+    //
+    // DMEM pointers:
+    // a0: pointer to y  (destination)
+    // a1: pointer to x  (source)
+    //
+    // g0 = nco_phase
+    // g1 = nco_freq
+    // g2 = L
+    
+    set.nco normal, 0x1, 0; // "normal" = generates 16 samples of a complex tone each cycle; nco_k=1; nco_freq=0 (will be changed later). opD. 3 cycle delay.    
+    clr.VRA;
+    ld.laddr [a1]+1;                                mv nco_freq, g1;    // 3-cyc delay. opB                                       
+                        set.VRAincr rS0,_VRH;       mv nco_phase, g0;   // 2-cyc delay. opB. Swap the contents of a general purpose register and the phase accumulator.      
+    ld.laddr [a1]+1;                                                    set.prec  half_fixed, half_fixed, half_fixed, single, half_fixed;
+                        ld.normal R0;                                   set.VRArange1 rS0, 0, _VRH;
+    
+    //====== Conjugate for effective IQ swap. Note: Q+jI = conj(I+jQ) * exp(j*pi/2). ======//
+    #if WIFI_DIG_RX_IQ_SWAP
+    ld.laddr [a1]+1;                    rd S0;  rd S1;  rd S2;          set.Smode S0conj, S0hlinecplx, S1nco, S2zeros;
+    #else
+    ld.laddr [a1]+1;                    rd S0;  rd S1;  rd S2;          set.Smode         S0hlinecplx, S1nco, S2zeros;
+    #endif                                                                                                             
+    //=====================================================================================//
+    
+                        ld.normal R0;   rd S0;  rd S1;                  set.VRAincr rSt,1;                      
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr  rSt,4;
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   set.VRAincr rV,_VRH;    setB.loop g2, LS, LE;
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr rV, 4*_VR;
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   set.VRArange1 rV, 4*_VR, 5*_VR+_VRH;
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;                            
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   wr.hlinecplx;   set.VRArange1 rSt, 4, 5;  
+LS: ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;   loop_begin;                        
+LE: st.laddr [a0]+1;    ld.normal R0;   rd S0;  rd S1;          cmad;   wr.hlinecplx;   loop_end;    
+    rts;          
+    mv g0, nco_phase;       // The value loaded into g0 is current value of nco_phase plus __AU_COUNT__
+    sub g0, __AU_COUNT__*9; // Deduct extra "rdS1"s. After the "rdS1" which causes the last store, 8 extra "rdS1" happened. 
+                            // If g0 is smaller than the deduction and the subtraction puts a negative number in g0, it causes no issue because "sub gx" uses 2's comp. 
+        
+_mixer_asm_end:
+// =============================================================================
+
+// =============================================================================
+    .global _mixerc_asm
+    .type _mixerc_asm, @function
+    .size _mixerc_asm, _mixerc_asm_end -_mixerc_asm    
+_mixerc_asm:
+    // register usage:
+    //
+    // VRA layout:
+    // R0: x
+    // R4R5: y
+    //
+    // rS0: {0,0.5}, incr0.5    
+    // rV:  {4, 4.5, 5, 5.5}, incr0.5
+    // rSt: {4,5}
+    //
+    // DMEM pointers:
+    // a0: pointer to y  (destination)
+    // a1: pointer to x  (source)
+    // a2: circular buffer starting addr of x
+    //
+    // g0 = nco_phase
+    // g1 = nco_freq
+    // g2 = L
+    // g3 = circular buffer size in minimum addressable unit  
+    
+    //====== Conjugate for effective IQ swap. Note: Q+jI = conj(I+jQ) * exp(j*pi/2). ======//  
+    #if WIFI_DIG_RX_IQ_SWAP
+    #define SET_SMODE_NCO   set.Smode S0conj, S0hlinecplx, S1nco, S2zeros
+    #else
+    #define SET_SMODE_NCO   set.Smode         S0hlinecplx, S1nco, S2zeros
+    #endif    
+    //=====================================================================================//
+        
+    set.range a1,a2,g3;
+    set.nco normal, 0x1, 0; // "normal" = generates 16 samples of a complex tone each cycle; nco_k=1; nco_freq=0 (will be changed later). opD. 3 cycle delay.
+    clr.VRA;
+    set.VRAincr rS0,_VRH;
+    ld.laddr [a1]+1;                                mv nco_freq, g1;    // 3-cyc delay. opB                            
+    ld.laddr [a1]+0;                                mv nco_phase, g0;   // 2-cyc delay. opB. Swap the contents of a general purpose register and the phase accumulator.                   
+                                                    set.VRArange1 rS0, 0, _VRH;       
+    ld.laddr [a1]+1;    ld.h2l R0;                                      set.prec  half_fixed, half_fixed, half_fixed, single, half_fixed;
+    ld.laddr [a1]+0;    ld.l2h R0;                                      SET_SMODE_NCO;
+                                        rd S0;  rd S1;  rd S2;          set.VRAincr rSt,1;      mvB.VRAptr a2, rS2;
+    ld.laddr [a1]+1;    ld.h2l R0;      rd S0;  rd S1;                  set.VRAptr  rSt,4;
+    ld.laddr [a1]+0;    ld.l2h R0;                              cmad;   set.VRAincr rV,_VRH;    
+                                        rd S0;  rd S1;          cmad;   set.VRArange1 rV, 4*_VR, 5*_VR+_VRH;    
+    ld.laddr [a1]+1;    ld.h2l R0;      rd S0;  rd S1;                  set.VRAptr rV, 4*_VR;
+    ld.laddr [a1]+0;    ld.l2h R0;                              cmad;                   setB.loop g2, CS, CE;       // Note: two writes for one store                            
+                                        rd S0;  rd S1;          cmad;   wr.hlinecplx;   set.VRArange1 rSt, 4, 5;  
+CS: ld.laddr [a1]+1;    ld.h2l R0;      rd S0;  rd S1;                  wr.hlinecplx;   loop_begin;                        
+    ld.laddr [a1]+0;    ld.l2h R0;                              cmad;          
+CE: st.laddr [a0]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;   loop_end;
+    set.range a1,a2,0; rts;          
+    mv g0, nco_phase;       // The value loaded into g0 is current value of nco_phase plus __AU_COUNT__
+    sub g0, __AU_COUNT__*6; // Deduct extra "rdS1"s. After the "rdS1" which causes the last store, 5 extra "rdS1" happened.   
+                            // If g0 is smaller than the deduction and the subtraction puts a negative number in g0, it causes no issue because "sub gx" uses 2's comp.
+        
+_mixerc_asm_end:
+// =============================================================================
+
+// =============================================================================
+// Note: mixerc_v2 is not in header file.
+//
+// mixerc_v2 is faster and safe if L is even.
+// mixerc_v2 is faster but not safe if L is odd: 
+//  Denote the line after the last line of y by "X"
+//  Problem appears if someone visits X (e.g. DMEM DMA) after X is corrupted and before X is recovered. This would be a hard-to-find issue since it depends on run-time behaviour.  
+//  The risk can be avoided by (a) call it with L being even; or (b) allocate one more DMEM line after y buffer as safety zone; or (c) ensure no one else read the line after y when mixing is running.
+/*
+
+    .global _mixerc_v2_asm
+    .type _mixerc_v2_asm, @function
+    .size _mixerc_v2_asm, _mixerc_v2_asm_end -_mixerc_v2_asm    
+_mixerc_v2_asm:
+    // register usage:
+    //
+    // VRA layout:
+    // R0:  x
+    // R4R5:y
+    // R2:  The DMEM line after the last line of y. This is to support any L value.  
+    //
+    // rS0: {0,0.5}, incr0.5    
+    // rV:  {4, 4.5, 5, 5.5}, incr0.5
+    // rSt: {4,5}
+    
+    //
+    // DMEM pointers:
+    // a0: pointer to y  (destination)
+    // a1: pointer to x  (source)
+    // a2: circular buffer starting addr of x
+    // a3: pointer to the line after the last line of y
+    //
+    // g0 = nco_phase
+    // g1 = nco_freq
+    // g2 = L
+    // g3 = circular buffer size in minimum addressable unit
+    
+    // To support any L value, this function uses an easy implementation. 
+    //  First load the DMEM line after the last line of y into VRA. 
+    //  When L is odd,  last store in the loop corrupts that line. We use the pre-loaded line to recover when exiting the function.
+    //  When L is even, last store in the loop is valid. We still store the pre-loaded line when exiting the function, which is a redundant store.
+    
+    //====== Conjugate for effective IQ swap. Note: Q+jI = conj(I+jQ) * exp(j*pi/2). ======//  
+    #if WIFI_DIG_RX_IQ_SWAP
+    #define SET_SMODE_NCO   set.Smode S0conj, S0hlinecplx, S1nco, S2zeros
+    #else
+    #define SET_SMODE_NCO   set.Smode         S0hlinecplx, S1nco, S2zeros
+    #endif    
+    //=====================================================================================//
+        
+    add g7,g2,1;
+    sr  g7,g7,1;    // g7 = ceil(nLine/2)
+    sl g5, g2, (LOG2NAU + LOG2UPHW + 2);    // g5: DMEM addr offset to reach the line that will be corrupted if L is odd
+    sl g4, g2, (LOG2NAU + 1);
+    add g4,g4,g0;                           // g4: NCO phase for next call of mixer
+    set.range a1,a2,g3;
+    set.nco normal, 0x1, 0; // "normal" = generates 16 samples of a complex tone each cycle; nco_k=1; nco_freq=0 (will be changed later). opD. 3 cycle delay.
+    ld [a0]+g5;     clr.VRA;
+    ld [a0]-g5;     mvB a3, a0;
+    ld.laddr [a1]+1;    set.VRAincr rV,_VRH;    
+    ld.laddr [a1]+1;                                mv nco_freq, g1;    // 3-cyc delay. opB                                       
+                        ld.normal R2;               mv nco_phase, g0;   set.VRAincr rS0,_VRH;   // 2-cyc delay. opB. Swap the contents of a general purpose register and the phase accumulator.      
+    ld.laddr [a1]+1;    ld.h2l R0;                                      set.prec  half_fixed, half_fixed, half_fixed, single, half_fixed;
+                        ld.l2h_h2l R0;                                  set.VRArange1 rS0, 0, _VR+_VRH;
+    ld.laddr [a1]+1;                    rd S0;  rd S1;  rd S2;          SET_SMODE_NCO;
+                        ld.h2l_l2h R0;  rd S0;  rd S1;                                                                                  
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr  rSt,4;
+                        ld.l2h_h2l R0;  rd S0;  rd S1;          cmad;   set.VRArange1 rV, 4*_VR, 5*_VR+_VRH;
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr rV, 4*_VR;
+                        ld.h2l_l2h R0;  rd S0;  rd S1;          cmad;                   
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;   setB.loop g7, V2S, V2E;   // Note: two writes for one store                            
+                        ld.l2h_h2l R0;  rd S0;  rd S1;          cmad;   wr.hlinecplx;   mvB.VRAptr a2, rS2;
+V2S:ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;   set.VRAptr rSt, 4; loop_begin;
+    st.laddr [a0]+1;    ld.h2l_l2h R0;  rd S0;  rd S1;          cmad;   wr.hlinecplx;
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;   set.VRAptr rSt, 5;                     
+V2E:st.laddr [a0]+1;    ld.l2h_h2l R0;  rd S0;  rd S1;          cmad;   wr.hlinecplx;   set.VRAptr rSt, 2; loop_end;        
+    st.laddr [a3]+0;    rts;            // This is a recovery store if L is odd; redundant store if L is even.
+    set.range a1,a2,0;
+    mv g0, g4;
+    
+_mixerc_v2_asm_end:                            
+// =============================================================================
+*/      
+
+
+// =============================================================================
+    .global _mixerc_vecalgn_asm
+    .type _mixerc_vecalgn_asm, @function
+    .size _mixerc_vecalgn_asm, _mixerc_vecalgn_asm_end -_mixerc_vecalgn_asm    
+_mixerc_vecalgn_asm:
+    // register usage:
+    //
+    // VRA layout:
+    // R0: x
+    // R4R5: y
+    //
+    // rS0: {0,0.5}, incr0.5    
+    // rV:  {4, 4.5, 5, 5.5}, incr0.5
+    // rSt: {4,5}
+    //
+    // DMEM pointers:
+    // a0: pointer to y  (destination)
+    // a1: pointer to x  (source)
+    // a2: circular buffer starting addr of x
+    //
+    // g0 = nco_phase
+    // g1 = nco_freq
+    // g2 = L
+    // g3 = circular buffer size in minimum addressable unit
+    set.range a1,a2,g3;
+    set.nco normal, 0x1, 0; // "normal" = generates 16 samples of a complex tone each cycle; nco_k=1; nco_freq=0 (will be changed later). opD. 3 cycle delay.    
+    clr.VRA;
+    ld.laddr [a1]+1;                                mv nco_freq, g1;    // 3-cyc delay. opB                                       
+                        set.VRAincr rS0,_VRH;       mv nco_phase, g0;   // 2-cyc delay. opB. Swap the contents of a general purpose register and the phase accumulator.      
+    ld.laddr [a1]+1;                                                    set.prec  half_fixed, half_fixed, half_fixed, single, half_fixed;
+                        ld.normal R0;                                   set.VRArange1 rS0, 0, _VRH;
+    
+    //====== Conjugate for effective IQ swap. Note: Q+jI = conj(I+jQ) * exp(j*pi/2). ======//
+    #if WIFI_DIG_RX_IQ_SWAP
+    ld.laddr [a1]+1;                    rd S0;  rd S1;  rd S2;          set.Smode S0conj, S0hlinecplx, S1nco, S2zeros;
+    #else
+    ld.laddr [a1]+1;                    rd S0;  rd S1;  rd S2;          set.Smode         S0hlinecplx, S1nco, S2zeros;
+    #endif                                                                                                             
+    //=====================================================================================//
+    
+                        ld.normal R0;   rd S0;  rd S1;                  set.VRAincr rSt,1;                      
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr  rSt,4;
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   set.VRAincr rV,_VRH;    setB.loop g2, CVS, CVE;
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr rV, 4*_VR;
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   set.VRArange1 rV, 4*_VR, 5*_VR+_VRH;
+    ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;                            
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   wr.hlinecplx;   set.VRArange1 rSt, 4, 5;  
+CVS:ld.laddr [a1]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;   loop_begin;                        
+CVE:st.laddr [a0]+1;    ld.normal R0;   rd S0;  rd S1;          cmad;   wr.hlinecplx;   loop_end;
+    mv a2, 0;    
+    set.range a1,a2,0; rts;          
+    mv g0, nco_phase;       // The value loaded into g0 is current value of nco_phase plus __AU_COUNT__
+    sub g0, __AU_COUNT__*9; // Deduct extra "rdS1"s. After the "rdS1" which causes the last store, 8 extra "rdS1" happened.   
+                            // If g0 is smaller than the deduction and the subtraction puts a negative number in g0, it causes no issue because "sub gx" uses 2's comp.
+        
+_mixerc_vecalgn_asm_end:
+// =============================================================================

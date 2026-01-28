@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2016 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           cycShiftFD_asm.sx
+//! @brief          y = x1.*NCO where x and y in complex 16-bit half-fixed. 
+//! @author         NXP Semiconductors
+// =============================================================================
+
+#include "vspa.h"
+
+#define _VR     (__AU_COUNT__*4)
+#define _VRH    (__AU_COUNT__*2)
+ 
+ // -----------------------------------------------------------------------------
+// Subroutine name: cycShiftFD
+// -----------------------------------------------------------------------------
+ 
+ 
+ 	.section .text
+    .global _cycShiftFD_asm
+    .type _cycShiftFD_asm, @function
+    .size _cycShiftFD_asm, _cycShiftFD_asm_end -_cycShiftFD_asm    
+_cycShiftFD_asm:    
+    
+
+    // -----------------------------------------------------------------------------------------------------------      
+    // Perform cyclic shift in frequency domain
+    //
+    // -----------------------------------------------------------------------------------------------------------
+    // ABI:
+    //  a0 - input pointer (complex half precision)
+    //  a1 - output pointer (complex half precision)
+    //  g0 - shift size (in samples)
+    //  g1 - sequence length
+    //
+    // Register usage:
+    //  R0 	 - input 
+    //  R4R5 - output
+    //
+    // ------------------------------------------------------------------------------------------------------------
+    
+    sl g0,g0,16;                                                            							// g0 = q * 2^16                   (opS, 1 cycles) 
+    mod g5,g0,g1;                                                           							// g5 = mod(q * 2^16 , N_ZC) = r0  (opS, 7 cycles)
+    div g6,g0,g1;                                                           							// g6 = div(q * 2^16 / N_ZC) = c0  (opS, 7 cycles)
+    							clr.VRA;                                   													
+    							set.Smode  S0hlinecplx, S1nco, S2zeros;							
+    							set.prec  half, single, half, single, half;							
+    							add g2,g1,31;							
+    							sr g2,g2,5;							
+    sl g5,g5,16;                                                            							// g5 = r0 * 2^16                  (opS, 1 cycles) 
+    div g5,g5,g1;                                                           							// g5 = div(r0 * 2^16 / N_ZC) = c1 (opS, 7 cycles)
+    mod g7,g5,g1;                                    							
+    							mv g3,0; 							
+    							set.nco normal,1,0;  							
+    							set.VRAincr rS0,_VRH; 							
+   								set.VRArange1 rSt, 4, 5;                        							                                
+    sl g0,g6,16;                                                            							// g0 = c0 * 2^16                  (opS, 1 cycles)
+    add g0,g0,g5;                                                           							// g0 = c0 * 2^16 + c1             (opS, 1 cycles)
+	sr g4,g1,1;																							// g4 = floor(N_ZC / 2)			   (opS, 1 cycles)
+	add g4,g4,g7;																						// g4 = floor(N_ZC / 2) + r1       (opS, 1 cycles)
+	cmp g4,g1;																							// Compare g4 with N_ZC            (opS, 2 cycles)
+	mv nco_phase, g3;   																				// 2-cyc delay. opB. Swap the contents of a general purpose register and the phase accumulator.
+	add.ge g0,g0,1;																						// g0 = nco_freq                   (opS, 1 cycles)		            
+    ld.laddr [a0]+1;                                                                     
+                        					            				mv nco_freq,g0;							
+    ld.laddr [a0]+1;                                                    
+                        ld.normal R0;                                   set.VRArange1 rS0, 0, _VRH;
+    ld.laddr [a0]+1;                    rd S0;  rd S1;  rd S2;          set.VRAincr rSt,1;  
+                        ld.normal R0;   rd S0;  rd S1;                  setB.loop g2, LS, LE;                     
+    ld.laddr [a0]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr  rSt,4;
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   set.VRAincr rV,_VRH;    
+    ld.laddr [a0]+1;                    rd S0;  rd S1;          cmad;   set.VRAptr rV, 4*_VR;
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   set.VRArange1 rV, 4*_VR, 5*_VR+_VRH;
+    ld.laddr [a0]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;                            
+                        ld.normal R0;   rd S0;  rd S1;          cmad;   wr.hlinecplx;   
+LS: ld.laddr [a0]+1;                    rd S0;  rd S1;          cmad;   wr.hlinecplx;   loop_begin;                        
+LE: st.laddr [a1]+1;    ld.normal R0;   rd S0;  rd S1;          cmad;   wr.hlinecplx;   loop_end;    
+    rts;                       
+    nop;
+    nop;
+_cycShiftFD_asm_end:

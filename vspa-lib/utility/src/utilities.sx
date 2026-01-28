@@ -1,0 +1,311 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2022 - 2025  NXP
+
+#ifndef VSPA2
+#define UPHW	2
+#else
+#define UPHW	1
+#endif
+
+#ifndef VSPA2
+//convert half to half_fixed
+//API convert_half_to_hfix(void* out, void* in, unsigned int nL);
+//nL: number of lines.
+	.global     _convert_half_to_hfix
+    .type       _convert_half_to_hfix, %function
+    .size       _convert_half_to_hfix, _convert_half_to_hfix_end - _convert_half_to_hfix
+
+//    .global     _memclr_lines_circ
+ //   .type       _memclr_lines_circ, %function
+ //   .size       _memclr_lines_circ, _memclr_lines_circ_end - _memclr_lines_circ
+
+    .section    .text, "ax", %progbits
+//_memclr_lines_circ:
+ //   set.range   a0, a1, g1
+_convert_half_to_hfix:
+	
+    ld.laddr [a1]+1;										clr.VRA;
+    ld.laddr [a1]+1;										set.VRAptr rS0,64;
+    ld.laddr [a1]+1;										set.loop    g0, 1
+    ld.laddr [a1]+1;	ld.normal R1;						set.prec half,half,half,single,half_fixed;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	set.smode S0straight,S1real1,S2zeros;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;	wr.straight;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;	wr.straight;	st.laddr [a0]+1; loop_begin;loop_end;
+    rts;
+    nop;
+    nop;
+_convert_half_to_hfix_end:
+//_memclr_lines_circ_end:
+  
+//convert half_fixed to half
+//API convert_hfix_to_half(void* out, void* in, unsigned int nL);
+//nL: number of lines.
+	.global     _convert_hfix_to_half
+    .type       _convert_hfix_to_half, %function
+    .size       _convert_hfix_to_half, _convert_hfix_to_half_end - _convert_hfix_to_half
+
+//    .global     _memclr_lines_circ
+ //   .type       _memclr_lines_circ, %function
+ //   .size       _memclr_lines_circ, _memclr_lines_circ_end - _memclr_lines_circ
+
+    .section    .text, "ax", %progbits
+//_memclr_lines_circ:
+ //   set.range   a0, a1, g1
+_convert_hfix_to_half:
+	
+    ld.laddr [a1]+1;										clr.VRA;
+    ld.laddr [a1]+1;										set.VRAptr rS0,64;
+    ld.laddr [a1]+1;										set.loop    g0, 1
+    ld.laddr [a1]+1;	ld.normal R1;						set.prec half_fixed,half,half,single,half;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	set.smode S0straight,S1real1,S2zeros;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;	wr.straight;
+    ld.laddr [a1]+1;	ld.normal R1;	rd S0;rd S1;rd S2;	rmad;	wr.straight;	st.laddr [a0]+1; loop_begin;loop_end;
+    rts;
+    nop;
+    nop;
+_convert_hfix_to_half_end:
+//_memclr_lines_circ_end:
+  
+  
+//API: unsigned int measure_axiq_allowed(u32 trx_allowed_reg_index, u32 trx_allowed_bit_mask, u32 approx_len)
+//	trx_allowed_reg_index: register index of LS/HS tx/rx allowed registers to be measured
+//	trx_allowed_bit_mask:  tx/rx allowed bit mask of the register, for example bit mask for rx allowed channel 0 is 0x4
+//  approx_len:	approx. length of the tx/rx allowed signal in core clock, the code will look at this value to decide when to end the measurement
+//  NOTE: this kernel must be called a short time before rising edge of the signal to be measured.
+//the function must be called 
+	.global     _measure_axiq_allowed
+    .type       _measure_axiq_allowed, %function
+    .size       _measure_axiq_allowed, _measure_axiq_allowed_end - _measure_axiq_allowed
+    .section    .text, "ax", %progbits
+_measure_axiq_allowed:
+	sr g2,g2,4;
+	set.loop g2,maxiqb,maxiqe;
+	mv g4,0;
+	mv g3,0;
+	mvip g3,[g0],g1;
+maxiqb: mvip g3,[g0],g1; add g4,g4,g3; loop_begin;
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+    mvip g3,[g0],g1; add g4,g4,g3; 
+maxiqe: mvip g3,[g0],g1; add g4,g4,g3; loop_end;
+    add g4,g4,g3;
+    add g4,g4,g3;
+    rts; mv g0,g4;
+    nop;
+    nop;
+_measure_axiq_allowed_end:
+
+//API IQ_control_asm(void* out, void* in, unsigned int IQ_factor, unsigned int num_line);
+    .global _IQ_control_f16_asm
+    .type _IQ_control_f16_asm, @function
+    .size _IQ_control_f16_asm, F_IQ_control_f16_asm_end - _IQ_control_f16_asm
+    .global _IQ_control_asm
+    .type _IQ_control_asm, @function
+    .size _IQ_control_asm, F_IQ_control_asm_end - _IQ_control_asm
+    .global _IQ_control_f32_asm
+    .type _IQ_control_f32_asm, @function
+    .size _IQ_control_f32_asm, F_IQ_control_f32_asm_end - _IQ_control_f32_asm
+_IQ_control_f16_asm:
+	jmp _IQ_control_common
+	clr.VRA
+	set.prec half, half, single, single, half;
+_IQ_control_f32_asm:
+	jmp _IQ_control_common
+	clr.VRA
+	set.prec half, single, single, single, single;
+_IQ_control_asm:
+	clr.VRA
+	set.prec half, half_fixed, single, single, half_fixed;		
+_IQ_control_common:
+	ld.laddr [a1]+1;																set.VRAptr rS0,2*64;
+	ld.laddr [a1]+1;																set.VRAptr rv,2*64;
+	ld.laddr [a1]+1;											fill.w	[rv],g0;	
+	ld.laddr [a1]+1;	ld.normal R0;										
+	ld.laddr [a1]+1;	ld.normal R0;	rd S0; rd S1; rd S2; 	set.Smode S0straight,S1straight,S2zeros;
+	ld.laddr [a1]+1;	ld.normal R0;	rd S1;					set.loop	g1,1;
+	ld.laddr [a1]+1;	ld.normal R0;	rd S1;rmad;									set.VRAptr rv,4*64;
+	ld.laddr [a1]+1;	ld.normal R0;	rd S1;rmad;									set.VRAptr rst,4;
+	ld.laddr [a1]+1;	ld.normal R0;	rd S1;rmad;
+	ld.laddr [a1]+1;	ld.normal R0;	rd S1;rmad;
+	ld.laddr [a1]+1;	ld.normal R0;	rd S1;rmad;	wr.straight;
+	ld.laddr [a1]+1;	ld.normal R0;	rd S1;rmad;	wr.straight;	st.laddr [a0]+1;	loop_begin;loop_end;
+	rts;
+	nop;
+	nop;
+F_IQ_control_asm_end:
+F_IQ_control_f32_asm_end:
+F_IQ_control_f16_asm_end:
+
+
+#endif
+
+//float mpy_f32_f16(float f32, _fp16 f16)
+	.global     _mpy_f32_f16
+    .type       _mpy_f32_f16, %function
+    .size       _mpy_f32_f16, _mpy_f32_f16_end - _mpy_f32_f16
+    .section    .text, "ax", %progbits
+_mpy_f32_f16:
+	clr.VRA
+	fill.w [rv],g0;	set.VRAptr rv, 64;
+	fill.h [rv],g1; set.VRAptr rS0,64;
+	set.prec half,single,single,single,single;
+	rd S0;rd S1; rd S2; set.smode S0hword,S1straight,S2zeros;
+	nop;
+	rmad;
+	nop;
+	nop;
+	nop
+	wr.straight;rts;
+	mv.w g0,[rs0];
+	nop
+_mpy_f32_f16_end:
+  
+  
+  
+ //float mpy_f32_f16_vs(float* dest_f32, float* src_f32, _fp16 f16, unsigned int num)
+ //num=1 to 32
+	.global     _mpy_f32_f16_vs
+    .type       _mpy_f32_f16_vs, %function
+    .size       _mpy_f32_f16_vs, _mpy_f32_f16_vs_end - _mpy_f32_f16_vs
+    .section    .text, "ax", %progbits
+_mpy_f32_f16_vs:
+	clr.VRA
+	ld.laddr [a1]+1;	
+	ld.laddr [a1]+1;set.VRAptr rv, 64;
+	fill.h [rv],g0; set.VRAptr rS0,64;
+	ld.h2l R0;		set.prec half,single,single,single,single;
+	ld.l2h R0;		
+	rd S0;rd S1; rd S2; set.smode S0hword,S1straight,S2zeros;
+	nop;
+	rmad;
+	nop;
+	set.VRAincr rs0,2;
+	set.loop g1,1;
+	wr.straight;		set.VRAptr rst, 1;	set.rot	r1r2;
+	st.w [a0]+2*UPHW;	ror;	loop_begin;loop_end;
+	rts;
+	nop;
+	nop;
+_mpy_f32_f16_vs_end:
+  
+  
+  
+//float mpy_f32_f32(float f32, float f32)
+	.global     _mpy_f32_f32
+    .type       _mpy_f32_f32, %function
+    .size       _mpy_f32_f32, _mpy_f32_f32_end - _mpy_f32_f32
+    .section    .text, "ax", %progbits
+_mpy_f32_f32:
+	clr.VRA
+	fill.w [rv],g0;	set.VRAptr rv, 64;
+	fill.w [rv],g1; set.VRAptr rS0,64;
+	set.prec single,single,single,single,single;
+	rd S0;rd S1; rd S2; set.smode S0hword,S1straight,S2zeros;
+	nop;
+	rmad;
+	nop;
+	nop;
+	nop
+	wr.straight;rts;
+	mv.w g0,[rs0];
+	nop
+_mpy_f32_f32_end:
+  
+
+/*
+prototype: 
+	void delay_cycles(unsigned int cycles);
+	g0: number of cycles to delay. must be larger than 8
+
+*/
+
+    .global _delay_cycles
+    .type _delay_cycles, @function
+_delay_cycles:
+	add g0,-8;			//6 cycles overhead in this kernel + 2 in jsr delay for calling this kernel
+	set.loop g0,1
+	nop;
+	loop_begin;		nop;	loop_end;
+	rts;
+	nop;
+	nop;
+_delay_cycles_end:
+F_delay_cycles_end:
+/*
+    .global _delay_cycles
+    .type _delay_cycles, @function
+_delay_cycles:
+	cmp g0,0;
+	nop
+	jmp.ne delay_valid_delay
+	nop;
+	nop;
+	rts;    //return due to cycles is 0
+	nop;
+	nop
+delay_valid_delay:
+	sr g1,g0,16;		//high 16bit of cycles
+	cmp g1,0;
+	nop;
+	jmp.ne delay_loop2layers;   //jump to 2 layer loop, as one layer loop maximun count 65536
+	nop;
+	nop;
+	set.loop g0,1;			//cycles less than 65536
+	nop;
+	loop_begin;		nop;	loop_end;
+	rts;
+	nop;
+	nop;
+	
+delay_loop2layers:
+	sub g2,g2,g2;   //inner loop 65536 times
+	set.loop g1,6;
+	nop;
+	nop;			loop_begin;
+	set.loop g2,1
+	nop;
+	loop_begin;		nop;	loop_end;
+	nop;
+	nop;
+	nop;			loop_end;
+	andD g0,g0,0x0000FFFF;
+	cmp g0,g0
+	nop;
+	jmp.eq delay_return;
+	nop;
+	nop;
+	set.loop g0,1;
+	nop;
+	loop_begin;		nop;	loop_end;
+	nop;
+	nop;
+	nop;			loop_end;	
+delay_return:
+	rts;
+	nop;
+	nop;
+
+_delay_cycles_end:
+F_delay_cycles_end:
+*/

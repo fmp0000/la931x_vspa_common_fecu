@@ -1,0 +1,6 @@
+
+===
+ Circular buffer: nPass/nCase: 2 / 2.
+
+===
+ Linear buffer: nPass/nCase: 1 / 1.

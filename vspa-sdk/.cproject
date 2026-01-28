@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?fileVersion 4.0.0?>
+
+<cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+	<storageModule configRelations="2" moduleId="org.eclipse.cdt.core.settings">
+		<cconfiguration id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141" moduleId="org.eclipse.cdt.core.settings" name="LA9310 CAS">
+				<externalSettings/>
+				<extensions>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.LltErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.AsmErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.IcodeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.MwfeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GASErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GmakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.vspa.cdt.errorParsers.FsvspaccErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.CobjErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.LnkErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.FssccErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GLDErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.ELF" point="org.eclipse.cdt.core.BinaryParser"/>
+				</extensions>
+			</storageModule>
+			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+				<configuration artifactExtension="elb" artifactName="libvspa-sdk" buildProperties="" buildReferences="true" buildReferencingConfigurations="false" cleanCommand="&quot;${system:ECLIPSE_HOME}/../gnu/bin/rm&quot; -f" description="LA9310 CAS" errorParsers="org.eclipse.cdt.core.GmakeErrorParser;com.freescale.core.ide.cdt.errorParsers.GCCErrorParser;org.eclipse.cdt.core.GLDErrorParser;org.eclipse.cdt.core.GASErrorParser;com.freescale.core.ide.cdt.errorParsers.MwfeErrorParser;com.freescale.vspa.cdt.errorParsers.FsvspaccErrorParser;com.freescale.core.ide.cdt.errorParsers.LnkErrorParser;com.freescale.core.ide.cdt.errorParsers.AsmErrorParser;com.freescale.core.ide.cdt.errorParsers.CobjErrorParser;com.freescale.core.ide.cdt.errorParsers.IcodeErrorParser;com.freescale.core.ide.cdt.errorParsers.LltErrorParser;com.freescale.core.ide.cdt.errorParsers.FssccErrorParser" id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141" isPrebuildInvalidatingBuild="false" name="LA9310 CAS" parent="com.freescale.vspa.cdt.toolchain.config.debug" produceBuildErrorsWithMissingReferences="true">
+					<folderInfo id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141." name="/" resourcePath="">
+						<toolChain id="com.freescale.vspa.cdt.toolchain.project.c.debug.1206806020" name="VSPA Application Toolchain" superClass="com.freescale.vspa.cdt.toolchain.project.c.debug">
+							<option defaultValue="com.freescale.vspa.cdt.toolchain.global.arch.16AU" id="com.freescale.vspa.cdt.toolchain.global.architecture.534417935" name="Arithmetic Unit" superClass="com.freescale.vspa.cdt.toolchain.global.architecture" value="com.freescale.vspa.cdt.toolchain.global.arch.16AU" valueType="enumerated"/>
+							<option defaultValue="com.freescale.vspa.cdt.toolchain.global.rev.VSPA2" id="com.freescale.vspa.cdt.toolchain.global.revision.375784824" name="Architecture" superClass="com.freescale.vspa.cdt.toolchain.global.revision" value="com.freescale.vspa.cdt.toolchain.global.rev.VSPA2" valueType="enumerated"/>
+							<targetPlatform id="com.freescale.vspa.cdt.toolchain.root.targetplatform.1614360677" isAbstract="false" name="VSPA Target Platform" superClass="com.freescale.vspa.cdt.toolchain.root.targetplatform"/>
+							<builder buildPath="${ProjDirPath}/bin/la9310/cas" id="com.freescale.vspa.cdt.toolchain.root.builder.136860856" keepEnvironmentInBuildfile="false" name="GNU Make Builder" parallelBuildWorkspaceOn="true" parallelizationNumber="-1" superClass="com.freescale.vspa.cdt.toolchain.root.builder"/>
+							<tool id="com.freescale.vspa.cdt.toolchain.root.scDisassembler.1016935121" name="VSPA Disassembler" superClass="com.freescale.vspa.cdt.toolchain.root.scDisassembler"/>
+							<tool id="com.freescale.vspa.cdt.toolchain.base.scLinker.918696546" name="VSPA C Linker Application" superClass="com.freescale.vspa.cdt.toolchain.base.scLinker">
+								<option defaultValue="${ProjDirPath}/LCF/la9310_sp.lcf" id="com.freescale.vspa.cdt.toolchain.scLinker.commandFile.620301782" name="Linker Command File" superClass="com.freescale.vspa.cdt.toolchain.scLinker.commandFile" value="${PROJECT_LOC}\lcf\la9310.lcf" valueType="string"/>
+								<option id="com.freescale.vspa.cdt.toolchain.scLinker.mapFile.7579585" name="Map File" superClass="com.freescale.vspa.cdt.toolchain.scLinker.mapFile" value="la9310.map" valueType="string"/>
+								<option id="com.freescale.vspa.cdt.toolchain.scLinker.extraArgs.914952425" name="Additional Options" superClass="com.freescale.vspa.cdt.toolchain.scLinker.extraArgs" value="-no-startup-files" valueType="string"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.scLinker.input.898564909" name="VSPA Linker Input" superClass="com.freescale.vspa.cdt.toolchain.scLinker.input">
+									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
+									<additionalInput kind="additionaldependency" paths="$(LCF_SRCS)"/>
+									<additionalInput kind="additionaldependency" paths="$(ELB_SRCS)"/>
+									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
+								</inputType>
+							</tool>
+							<tool id="com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.878181109" name="VSPA C Compiler" superClass="com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc">
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.includePaths.1136777533" name="Include File Search Paths" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.includePaths" valueType="includePath">
+									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/inc&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/inc&quot;"/>
+									<defaultValue>
+										<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/Sources&quot;"/>
+									</defaultValue>
+								</option>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.level.728237447" name="Optimization Level" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.level" value="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.level.level3" valueType="enumerated"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.mode.353027417" name="Optimize For" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.mode" value="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.mode.speed" valueType="enumerated"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.additionalOptions.shell.1084278565" name="To Shell" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.additionalOptions.shell" value="-enum int -sym inlines" valueType="string"/>
+								<option id="com.freescale.vspa.cdt.toolchain.config.fsvspacc.precision.415306847" name="Precision support" superClass="com.freescale.vspa.cdt.toolchain.config.fsvspacc.precision" value="com.freescale.vspa.cdt.toolchain.config.fsvspacc.halfprecision" valueType="enumerated"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.alias.556219758" name="Type-Based Alias Analysis" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.alias" value="true" valueType="boolean"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.definedMacros.30366465" name="Defined Preprocessor Macros" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.definedMacros" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__CAS__"/>
+									<listOptionValue builtIn="false" value="__LA9310__"/>
+								</option>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.compiler.fileCaps.1788412630" name="Incorrect Capitalization In #include &quot;....&quot;" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.compiler.fileCaps" value="com.freescale.vspa.cdt.toolchain.fsvspacc.compiler.fileCapsOff" valueType="enumerated"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.fsvspacc.cSource.2132295030" name="VSPA C Source File" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.cSource"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.fsvspacc.cxxSource.2015077665" name="VSPA C++ Source File" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.cxxSource"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.fsvspacc.s1Source.132811852" name="VSPA s1 Source File" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.s1Source"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.scAsm.source.1558729356" name="VSPA Assembly Source File" superClass="com.freescale.vspa.cdt.toolchain.scAsm.source"/>
+							</tool>
+							<tool id="com.freescale.vspa.cdt.toolchain.base.scPreprocessor.205666214" name="VSPA Preprocessor" superClass="com.freescale.vspa.cdt.toolchain.base.scPreprocessor"/>
+						</toolChain>
+					</folderInfo>
+					<sourceEntries>
+						<entry excluding="LA9310 RDB/**/*.sl|LA9310 RDB/**/*.s1|bin/la9310/cas/**/*.sl|bin/la9310/cas/**/*.s1|Debug_RFNM/**/*.sl|Debug_RFNM/**/*.s1|Debug_NLM/**/*.sl|Debug_NLM/**/*.s1|scripts/vspa_mbox.c|Sources/_main_second_backup.c|Sources/_main_backup.c|Sources/_main_Working Aug 30th eh.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+					</sourceEntries>
+				</configuration>
+			</storageModule>
+			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+		</cconfiguration>
+		<cconfiguration id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.158574420">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.158574420" moduleId="org.eclipse.cdt.core.settings" name="LA9310 RDB">
+				<externalSettings/>
+				<extensions>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.LltErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.AsmErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.IcodeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.MwfeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GASErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GmakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.vspa.cdt.errorParsers.FsvspaccErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.CobjErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.LnkErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.freescale.core.ide.cdt.errorParsers.FssccErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GLDErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.ELF" point="org.eclipse.cdt.core.BinaryParser"/>
+				</extensions>
+			</storageModule>
+			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+				<configuration artifactExtension="elb" artifactName="libvspa-sdk" buildProperties="" buildReferences="true" buildReferencingConfigurations="false" cleanCommand="&quot;${system:ECLIPSE_HOME}/../gnu/bin/rm&quot; -f" description="LA9310 RDB" errorParsers="org.eclipse.cdt.core.GmakeErrorParser;com.freescale.core.ide.cdt.errorParsers.GCCErrorParser;org.eclipse.cdt.core.GLDErrorParser;org.eclipse.cdt.core.GASErrorParser;com.freescale.core.ide.cdt.errorParsers.MwfeErrorParser;com.freescale.vspa.cdt.errorParsers.FsvspaccErrorParser;com.freescale.core.ide.cdt.errorParsers.LnkErrorParser;com.freescale.core.ide.cdt.errorParsers.AsmErrorParser;com.freescale.core.ide.cdt.errorParsers.CobjErrorParser;com.freescale.core.ide.cdt.errorParsers.IcodeErrorParser;com.freescale.core.ide.cdt.errorParsers.LltErrorParser;com.freescale.core.ide.cdt.errorParsers.FssccErrorParser" id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.158574420" isPrebuildInvalidatingBuild="false" name="LA9310 RDB" parent="com.freescale.vspa.cdt.toolchain.config.debug" produceBuildErrorsWithMissingReferences="true">
+					<folderInfo id="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.158574420." name="/" resourcePath="">
+						<toolChain id="com.freescale.vspa.cdt.toolchain.project.c.debug.1050809508" name="VSPA Application Toolchain" superClass="com.freescale.vspa.cdt.toolchain.project.c.debug">
+							<option defaultValue="com.freescale.vspa.cdt.toolchain.global.arch.16AU" id="com.freescale.vspa.cdt.toolchain.global.architecture.1931404960" name="Arithmetic Unit" superClass="com.freescale.vspa.cdt.toolchain.global.architecture" value="com.freescale.vspa.cdt.toolchain.global.arch.16AU" valueType="enumerated"/>
+							<option defaultValue="com.freescale.vspa.cdt.toolchain.global.rev.VSPA2" id="com.freescale.vspa.cdt.toolchain.global.revision.1733657160" name="Architecture" superClass="com.freescale.vspa.cdt.toolchain.global.revision" value="com.freescale.vspa.cdt.toolchain.global.rev.VSPA2" valueType="enumerated"/>
+							<targetPlatform id="com.freescale.vspa.cdt.toolchain.root.targetplatform.776905896" isAbstract="false" name="VSPA Target Platform" superClass="com.freescale.vspa.cdt.toolchain.root.targetplatform"/>
+							<builder buildPath="${ProjDirPath}/bin/la9310/rdb" id="com.freescale.vspa.cdt.toolchain.root.builder.1734842690" keepEnvironmentInBuildfile="false" name="GNU Make Builder" parallelBuildWorkspaceOn="true" parallelizationNumber="-1" superClass="com.freescale.vspa.cdt.toolchain.root.builder"/>
+							<tool id="com.freescale.vspa.cdt.toolchain.root.scDisassembler.1481048678" name="VSPA Disassembler" superClass="com.freescale.vspa.cdt.toolchain.root.scDisassembler"/>
+							<tool id="com.freescale.vspa.cdt.toolchain.base.scLinker.1403284851" name="VSPA C Linker Application" superClass="com.freescale.vspa.cdt.toolchain.base.scLinker">
+								<option defaultValue="${ProjDirPath}/LCF/la9310_sp.lcf" id="com.freescale.vspa.cdt.toolchain.scLinker.commandFile.834917484" name="Linker Command File" superClass="com.freescale.vspa.cdt.toolchain.scLinker.commandFile" value="${PROJECT_LOC}\lcf\la9310.lcf" valueType="string"/>
+								<option id="com.freescale.vspa.cdt.toolchain.scLinker.mapFile.996101869" name="Map File" superClass="com.freescale.vspa.cdt.toolchain.scLinker.mapFile" value="la9310.map" valueType="string"/>
+								<option id="com.freescale.vspa.cdt.toolchain.scLinker.extraArgs.2127779214" name="Additional Options" superClass="com.freescale.vspa.cdt.toolchain.scLinker.extraArgs" value="-no-startup-files" valueType="string"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.scLinker.input.1428595038" name="VSPA Linker Input" superClass="com.freescale.vspa.cdt.toolchain.scLinker.input">
+									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
+									<additionalInput kind="additionaldependency" paths="$(LCF_SRCS)"/>
+									<additionalInput kind="additionaldependency" paths="$(ELB_SRCS)"/>
+									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
+								</inputType>
+							</tool>
+							<tool id="com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.1880411362" name="VSPA C Compiler" superClass="com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc">
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.includePaths.364234046" name="Include File Search Paths" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.includePaths" valueType="includePath">
+									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/inc&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/inc&quot;"/>
+									<defaultValue>
+										<listOptionValue builtIn="false" value="&quot;${ProjDirPath}/Sources&quot;"/>
+									</defaultValue>
+								</option>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.level.348573335" name="Optimization Level" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.level" value="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.level.level3" valueType="enumerated"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.mode.1947809785" name="Optimize For" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.mode" value="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.mode.speed" valueType="enumerated"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.additionalOptions.shell.687757577" name="To Shell" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.additionalOptions.shell" value="-enum int -sym inlines" valueType="string"/>
+								<option id="com.freescale.vspa.cdt.toolchain.config.fsvspacc.precision.1040997846" name="Precision support" superClass="com.freescale.vspa.cdt.toolchain.config.fsvspacc.precision" value="com.freescale.vspa.cdt.toolchain.config.fsvspacc.halfprecision" valueType="enumerated"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.alias.1253052898" name="Type-Based Alias Analysis" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.optimization.alias" value="true" valueType="boolean"/>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.definedMacros.1536841935" name="Defined Preprocessor Macros" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.preprocessor.definedMacros" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="__CAS__"/>
+									<listOptionValue builtIn="false" value="__LA9310__"/>
+								</option>
+								<option id="com.freescale.vspa.cdt.toolchain.fsvspacc.compiler.fileCaps.308350965" name="Incorrect Capitalization In #include &quot;....&quot;" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.compiler.fileCaps" value="com.freescale.vspa.cdt.toolchain.fsvspacc.compiler.fileCapsOff" valueType="enumerated"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.fsvspacc.cSource.280703979" name="VSPA C Source File" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.cSource"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.fsvspacc.cxxSource.353295423" name="VSPA C++ Source File" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.cxxSource"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.fsvspacc.s1Source.766231910" name="VSPA s1 Source File" superClass="com.freescale.vspa.cdt.toolchain.fsvspacc.s1Source"/>
+								<inputType id="com.freescale.vspa.cdt.toolchain.scAsm.source.1931612058" name="VSPA Assembly Source File" superClass="com.freescale.vspa.cdt.toolchain.scAsm.source"/>
+							</tool>
+							<tool id="com.freescale.vspa.cdt.toolchain.base.scPreprocessor.1356437606" name="VSPA Preprocessor" superClass="com.freescale.vspa.cdt.toolchain.base.scPreprocessor"/>
+						</toolChain>
+					</folderInfo>
+					<sourceEntries>
+						<entry excluding="LA9310 RDB/**/*.sl|LA9310 RDB/**/*.s1|bin/la9310/cas/**/*.sl|bin/la9310/cas/**/*.s1|Debug_RFNM/**/*.sl|Debug_RFNM/**/*.s1|Debug_NLM/**/*.sl|Debug_NLM/**/*.s1|scripts/vspa_mbox.c|Sources/_main_second_backup.c|Sources/_main_backup.c|Sources/_main_Working Aug 30th eh.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+					</sourceEntries>
+				</configuration>
+			</storageModule>
+			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+		</cconfiguration>
+	</storageModule>
+	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+		<project id="vspa-sdk.com.freescale.vspa3.cdt.toolchain.project.lib.732609785" name="SVSPA3 Library Project" projectType="com.freescale.vspa3.cdt.toolchain.project.lib"/>
+	</storageModule>
+	<storageModule moduleId="refreshScope" versionNumber="1">
+		<resource resourceType="PROJECT" workspacePath="/vspa-sdk"/>
+	</storageModule>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.624457196;com.freescale.vspa3.cdt.toolchain.fsvspacc.cxxSource.2004008479">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.cpp.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1353454062;com.freescale.vspa3.cdt.toolchain.scAsm.source.1246591088">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.asm.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.878181109;com.freescale.vspa.cdt.toolchain.fsvspacc.cSource.2132295030">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.asm.scScannerConfigProfile"/>
+			<profile id="com.freescale.vspa.cdt.toolchain.asm.scScannerConfigProfile">
+				<buildOutputProvider>
+					<openAction enabled="true" filePath=""/>
+					<parser enabled="false"/>
+				</buildOutputProvider>
+				<scannerInfoProvider id="specsFile">
+					<runAction arguments="-def_print" command="${VSPAiSCAPEToolsInstallDir}/fsvspacc" useDefault="true"/>
+					<parser enabled="true"/>
+				</scannerInfoProvider>
+			</profile>
+			<profile id="com.freescale.vspa.cdt.toolchain.scScannerConfigProfile">
+				<buildOutputProvider>
+					<openAction enabled="true" filePath=""/>
+					<parser enabled="false"/>
+				</buildOutputProvider>
+				<scannerInfoProvider id="specsFile">
+					<runAction arguments="-def_print" command="${VSPAiSCAPEToolsInstallDir}/fsvspacc" useDefault="true"/>
+					<parser enabled="true"/>
+				</scannerInfoProvider>
+			</profile>
+			<profile id="com.freescale.vspa.cdt.toolchain.cpp.scScannerConfigProfile">
+				<buildOutputProvider>
+					<openAction enabled="true" filePath=""/>
+					<parser enabled="false"/>
+				</buildOutputProvider>
+				<scannerInfoProvider id="specsFile">
+					<runAction arguments="-def_print" command="${VSPAiSCAPEToolsInstallDir}/fsvspacc" useDefault="true"/>
+					<parser enabled="true"/>
+				</scannerInfoProvider>
+			</profile>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.878181109;com.freescale.vspa.cdt.toolchain.scAsm.source.1558729356">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.asm.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1353454062;com.freescale.vspa3.cdt.toolchain.fsvspacc.s1Source.508143448">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.226963163;com.freescale.vspa3.cdt.toolchain.fsvspacc.cSource.1791752780">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.54810491;com.freescale.vspa.cdt.toolchain.scAsm.source.541204973">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.asm.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.54810491;com.freescale.vspa.cdt.toolchain.fsvspacc.cxxSource.1784308393">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.cpp.scScannerConfigProfile"/>
+			<profile id="com.freescale.vspa.cdt.toolchain.asm.scScannerConfigProfile">
+				<buildOutputProvider>
+					<openAction enabled="true" filePath=""/>
+					<parser enabled="false"/>
+				</buildOutputProvider>
+				<scannerInfoProvider id="specsFile">
+					<runAction arguments="-def_print" command="${VSPAiSCAPEToolsInstallDir}/fsvspacc" useDefault="true"/>
+					<parser enabled="true"/>
+				</scannerInfoProvider>
+			</profile>
+			<profile id="com.freescale.vspa.cdt.toolchain.scScannerConfigProfile">
+				<buildOutputProvider>
+					<openAction enabled="true" filePath=""/>
+					<parser enabled="false"/>
+				</buildOutputProvider>
+				<scannerInfoProvider id="specsFile">
+					<runAction arguments="-def_print" command="${VSPAiSCAPEToolsInstallDir}/fsvspacc" useDefault="true"/>
+					<parser enabled="true"/>
+				</scannerInfoProvider>
+			</profile>
+			<profile id="com.freescale.vspa.cdt.toolchain.cpp.scScannerConfigProfile">
+				<buildOutputProvider>
+					<openAction enabled="true" filePath=""/>
+					<parser enabled="false"/>
+				</buildOutputProvider>
+				<scannerInfoProvider id="specsFile">
+					<runAction arguments="-def_print" command="${VSPAiSCAPEToolsInstallDir}/fsvspacc" useDefault="true"/>
+					<parser enabled="true"/>
+				</scannerInfoProvider>
+			</profile>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.54810491;com.freescale.vspa.cdt.toolchain.fsvspacc.s1Source.905360470">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.226963163;com.freescale.vspa3.cdt.toolchain.fsvspacc.s1Source.1016102804">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.624457196;com.freescale.vspa3.cdt.toolchain.scAsm.source.205620071">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.asm.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.624457196;com.freescale.vspa3.cdt.toolchain.fsvspacc.cSource.381000727">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1353454062;com.freescale.vspa3.cdt.toolchain.fsvspacc.cxxSource.1027336031">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.cpp.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1353454062;com.freescale.vspa3.cdt.toolchain.fsvspacc.cSource.118755892">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.878181109;com.freescale.vspa.cdt.toolchain.fsvspacc.cxxSource.2015077665">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.cpp.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1085984915;com.freescale.vspa3.cdt.toolchain.fsvspacc.s1Source.1880160562">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1044890141.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.878181109;com.freescale.vspa.cdt.toolchain.fsvspacc.s1Source.132811852">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1085984915;com.freescale.vspa3.cdt.toolchain.fsvspacc.cxxSource.1929768604">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.cpp.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.226963163;com.freescale.vspa3.cdt.toolchain.fsvspacc.cxxSource.1947602237">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.cpp.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1085984915;com.freescale.vspa3.cdt.toolchain.fsvspacc.cSource.753375108">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.1387563008.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.624457196;com.freescale.vspa3.cdt.toolchain.fsvspacc.s1Source.774515939">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008;com.freescale.vspa.cdt.toolchain.config.debug.1757503108.962430384.1806143008.;com.freescale.vspa.cdt.toolchain.c.debug.fsvspacc.54810491;com.freescale.vspa.cdt.toolchain.fsvspacc.cSource.2129934434">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa.cdt.toolchain.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.1085984915;com.freescale.vspa3.cdt.toolchain.scAsm.source.2001903932">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.asm.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936;com.freescale.vspa3.cdt.toolchain.config.lib.debug.995254586.2122749375.820498936.;com.freescale.vspa3.cdt.toolchain.project.lib.debug.fsvspacc.226963163;com.freescale.vspa3.cdt.toolchain.scAsm.source.1883869514">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId="com.freescale.vspa3.cdt.toolchain.asm.scScannerConfigProfile"/>
+		</scannerConfigBuildInfo>
+	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets">
+		<buildTargets>
+			<target name="LA9310 RDB" path="" targetID="org.eclipse.cdt.build.MakeTargetBuilder">
+				<buildCommand>make</buildCommand>
+				<buildArguments>-j40</buildArguments>
+				<buildTarget>LA9310 RDB</buildTarget>
+				<stopOnError>true</stopOnError>
+				<useDefaultCommand>true</useDefaultCommand>
+				<runAllBuilders>true</runAllBuilders>
+			</target>
+		</buildTargets>
+	</storageModule>
+</cproject>

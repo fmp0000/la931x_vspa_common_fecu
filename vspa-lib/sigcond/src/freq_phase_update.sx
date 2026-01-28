@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors
+
+// =============================================================================
+//! @file           freq_phase_update.sx
+//! @brief          Frequency, phase, gain and DC update   
+//! @author         NXP Semiconductors
+// =============================================================================
+#include "vspa.h"
+
+// -----------------------------------------------------------------------------
+// Subroutine name: freq_phase_update
+//
+// -----------------------------------------------------------------------------
+   .global  _freq_phase_update
+   .type   _freq_phase_update, @function
+_freq_phase_update:
+	// g0 = delta_mxrfreq
+	add a0, a0, (202)*UPHW;
+	ld g1, [a0]+(2)*UPHW;		// g1 = curr_freq
+	ld g2, [a0]-(10)*UPHW;		// g2 = curr_phase
+	ld g3, [a0]+(2)*UPHW;		// g3 = cmplxGainL
+	ld g4, [a0]+(2)*UPHW;		// g4 = cmplxGainH
+	ld g5, [a0]+(2)*UPHW;		// g5 = cmplxDCOffL
+	ld g6, [a0]+(2)*UPHW;		// g6 = cmplxDCOffH
+
+	// configure nco
+	set.nco normal, 0x1, 0;
+	mv nco_freq, g1;
+	mv nco_phase, g2;
+	
+	// update frequency: curr_freq = curr_freq + delta_mxrfreq
+	addS g0, g0, g1;
+	st [a0]+(2)*UPHW, g0;		// save updated frequency
+	mv g0, 0;			// set updated phase g0 = 0
+	st [a0]-(10)*UPHW, g0;		// save updated phase
+	
+	// generate the next phase
+	clr.VRA;
+	set.prec single, single, single, single, single;
+	set.Smode S0cplx1, S1nco, S2zeros;		rd S0; nco; rd S2;
+	setB.VRAptr rV, 64;
+	mv.d [rV], g3:g4;													cmad.sau;		// R1[0:1] = cmplxGain
+	setB.VRAptr rV, 68;
+	mv.d [rV], g5:g6;																	// R2[2:3] = cmplxDCOff
+	setB.VRAptr rV, 0;
+	setB.VRAptr rS1, 64;														wr.hlinecplx;
+	set.Smode S0word, S1hlinecplx, S2zeros;			rd S0; rd S1; rd S2;
+	fnop;
+															cmad;
+	fnop;	
+	fnop;	
+	set.rot R0r2;
+																		wr.hlinecplx;
+	stA.w [a0]+(2)*UPHW;	ror;
+	stA.w [a0]+(2)*UPHW;	ror;	rts;
+	stA.w [a0]+(2)*UPHW;	ror;
+	stA.w [a0]+0;
+						
+   .size   _freq_phase_update, .-_freq_phase_update
+  

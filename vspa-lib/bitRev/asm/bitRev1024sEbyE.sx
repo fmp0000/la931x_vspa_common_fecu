@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+# Copyright 2017 - 2025   NXP Semiconductors All rights reserved
+
+// =============================================================================
+//! @file           bitRev1024sEbyE.sx
+//! @brief          IPPU procedure to perfrom shiftting and bit-reversal of 1024 
+//!                 sub-carriers. 
+//! @author         NXP Semiconductors.
+// =============================================================================
+// bitRev256sEbyE.sx -- IPPU procedure to perfrom shiftting and bit-reversal of 1024
+//                sub-carriers.
+//
+// bitRev1024sEbyE(
+//     vspa_complex_float16 *pOut,
+//     vspa_complex_float16 const *pIn );
+//
+// arg0: pOut       = pointer to the linear output buffer.
+// arg1: pIn        = pointer to bit-reversed input buffer.
+//
+// =============================================================================
+
+    .ippu
+    .global     _ippu_args
+    .type       _ippu_args, %object
+    .icomm      _ippu_args,  (2 * 4)
+
+    .section    .itext
+    .global     _bitRev1024sEbyE
+    .type       _bitRev1024sEbyE, %function
+
+_bitRev1024sEbyE:
+    // -------------------------------------------------------------------------
+    // Load input arguments:
+    // -------------------------------------------------------------------------
+    ld      as1, +0;                          // Load output buffer address.
+    ld      as0, +1;                          // Load input buffer address.
+    
+    // -------------------------------------------------------------------------
+    // Initialize core registers:
+    // -------------------------------------------------------------------------
+    mv      mem_elem_rd_ptr, 0;              // Reset memory read pointer.
+    mv      mem_elem_wr_ptr, 0;              // Reset memory write pointer.
+    mv      r_wr_ptr, 255;                   // Reset register write pointer.(point to last addressable element to taggle between R0 and R1)
+    mv      r_rd_ptr, 0;                     // Reset register read pointer.
+    
+    // --------------------------------------------------------------------------
+    // bit-reversal
+    // --------------------------------------------------------------------------
+    mv a1, as1;
+    mv a0, as0;
+    set.range a1, as1, 2048;
+    set.br a1, fft1024;
+    nop;
+    ld.vcpu [a1]+2, 0, normal, 0, normal;       // dummy load to offset the output pointer.
+    set.loop 1, 16;
+    mv m0, 64;
+    nop;
+    ld.vcpu [a0]+m0,  0, normal, +1, normal;            loop_begin 1;       // load to R0
+    ld.vcpu [a0]+m0,  0, normal, -1, normal;                                // load to R1
+    set.loop 0, 31;
+    mv      r_rd_ptr, 0;                                    // Reset register read pointer.
+    st.vcpu [a1]-2, 0, br, +8, e32;      loop_begin 0; 
+    st.vcpu [a1]+6, 0, br, +8, e32;      loop_end 0;
+    st.vcpu [a1]-2, 0, br, +8, e32;
+    st.vcpu [a1]+6, 0, br, +8, e32;                      loop_end 1;
+    set.range a1, as1, 0;
+    nop;
+    done;
+    nop;
+    nop;
+
+    .size       _bitRev1024sEbyE, . - _bitRev1024sEbyE

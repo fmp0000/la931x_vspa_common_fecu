@@ -1,7 +1,7 @@
 ---
 kernel: matrix
 precision: [half_fixed, half_float]
-status: python_model_wip
+status: sim_verified
 
 inputs:
   - name: vec_p

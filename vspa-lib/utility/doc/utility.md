@@ -1,7 +1,7 @@
 ---
 kernel: utility
 precision: [mixed]
-status: not_started
+status: sim_verified
 inputs: []
 outputs: []
 scratch: []
@@ -19,9 +19,10 @@ depends_on: []
 test_cases: []
 perf:
   target_efficiency: null
+  cycles: 4634
   c_cycles: null
   sx_cycles: null
-  au_config: null
+  au_config: vspa2_16au
   notes: "Container for utility primitives; define per-function specs as needed."
 ---
 

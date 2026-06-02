@@ -58,7 +58,7 @@ vectors/vec.hex:
 	$(MAKE) generate
 
 test: $(TARGET)
-	@if [ -f "$(REPO_ROOT)/scripts/run_test.py" ]; then python3 $(REPO_ROOT)/scripts/run_test.py $(TARGET) vspa2_$(AU)au; else echo "INFO: run_test.py not in tree; ELF at $(TARGET)"; fi
+	python3 ../../tools/run_sim.py $(TARGET) vspa2_$(AU)au $(CYCLES)
 
 clean:
 	rm -f vectors/vec.hex vectors/mat.hex vectors/ref.hex $(TARGET)

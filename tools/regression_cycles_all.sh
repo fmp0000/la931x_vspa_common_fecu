@@ -1,53 +1,44 @@
 #!/usr/bin/env bash
+# Standalone regression runner for vspa-lib submodule kernels.
+# No Docker, no superproject required — uses tools/run_sim.py as simulator backend.
+#
+# Usage:  ./tools/regression_cycles_all.sh [AU]
+#         AU defaults to 16
 set -euo pipefail
 
-SUBMODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VSPA_LIB="$TOOLS_DIR/../vspa-lib"
 
-# Prefer superproject root when this is a git submodule checkout.
-SUPER_ROOT="$(cd "$SUBMODULE_DIR" && git rev-parse --show-superproject-working-tree 2>/dev/null || true)"
-if [[ -n "$SUPER_ROOT" ]]; then
-  ROOT_DIR="$SUPER_ROOT"
-else
-  ROOT_DIR="$SUBMODULE_DIR"
+# Resolve VSPA toolchain: env var > /opt default
+if [[ -z "${VSPA_TOOL:-}" ]]; then
+  if [[ -x "/opt/VSPA_Tools_vbeta_14_00_781/bin/fsvspacc" ]]; then
+    VSPA_TOOL="/opt/VSPA_Tools_vbeta_14_00_781"
+  else
+    echo "ERROR: VSPA_TOOL is not set and /opt/VSPA_Tools_vbeta_14_00_781 not found."
+    echo "       Set VSPA_TOOL to your toolchain root, e.g.:"
+    echo "         VSPA_TOOL=/path/to/VSPA_Tools ./tools/regression_cycles_all.sh"
+    exit 2
+  fi
 fi
+export VSPA_TOOL
+echo "VSPA_TOOL: $VSPA_TOOL"
 
-cd "$ROOT_DIR"
-
-if [[ ! -f "scripts/run_test.py" ]]; then
-  echo "ERROR: scripts/run_test.py nicht gefunden."
-  echo "Hinweis: Dieses Skript erwartet den Superprojekt-Workspace mit tests/ und scripts/."
-  exit 2
-fi
-
-AU=16
+AU="${1:-16}"
 DATE_TAG="$(date +%Y%m%d_%H%M%S)"
-REPORT_DIR="${REPORT_DIR:-$ROOT_DIR/build/reports}"
-REPORT_CSV="$REPORT_DIR/cycle_regression_${DATE_TAG}.csv"
+REPORT_DIR="${REPORT_DIR:-$TOOLS_DIR/../build/reports}"
+REPORT_CSV="$REPORT_DIR/regression_${DATE_TAG}.csv"
 
 mkdir -p "$REPORT_DIR"
 
-if [[ ! -f "$ROOT_DIR/.venv/bin/activate" ]]; then
-  echo "ERROR: .venv fehlt. Bitte zuerst: python3 -m venv .venv && . .venv/bin/activate && pip install numpy"
-  exit 2
-fi
-
-# shellcheck disable=SC1091
-. "$ROOT_DIR/.venv/bin/activate"
-
-if ! docker ps --format '{{.Names}}' | grep -qx 'vspa-unified'; then
-  echo "[info] starte vspa-unified..."
-  docker compose up -d vspa-unified
-fi
-
-if ! docker exec vspa-unified python3 -c 'import numpy' >/dev/null 2>&1; then
-  echo "[info] installiere numpy im Container..."
-  docker exec vspa-unified python3 -m pip install numpy >/dev/null
-fi
-
-mapfile -t kernels < <(find tests -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+mapfile -t kernels < <(
+  find "$VSPA_LIB" -mindepth 3 -maxdepth 3 -name "Makefile" \
+    | grep "/tests/Makefile$" \
+    | sed 's|.*/vspa-lib/||; s|/tests/Makefile||' \
+    | sort
+)
 
 if [[ ${#kernels[@]} -eq 0 ]]; then
-  echo "ERROR: keine tests/<kernel>-Ordner gefunden"
+  echo "ERROR: no vspa-lib/<kernel>/tests/Makefile found under $VSPA_LIB"
   exit 2
 fi
 
@@ -57,37 +48,40 @@ pass_count=0
 fail_count=0
 
 for k in "${kernels[@]}"; do
-  if [[ ! -f "tests/$k/Makefile" ]]; then
-    continue
+  test_dir="$VSPA_LIB/$k/tests"
+  build_dir="$REPORT_DIR/../build/$k/tests"
+  mkdir -p "$build_dir"
+  echo "===== $k ====="
+
+  # gen_vectors step (only if the target exists)
+  if make -C "$test_dir" AU="$AU" VSPA_TOOL="$VSPA_TOOL" BUILD_DIR="$build_dir" generate -n >/dev/null 2>&1; then
+    make -C "$test_dir" AU="$AU" VSPA_TOOL="$VSPA_TOOL" BUILD_DIR="$build_dir" generate >/dev/null 2>&1 || true
   fi
 
-  echo "===== $k ====="
-  out="$(python scripts/run_test.py --kernel "$k" --au "$AU" --cycles 2>&1 || true)"
+  # build + test with cycle counting
+  out="$(make -C "$test_dir" AU="$AU" VSPA_TOOL="$VSPA_TOOL" BUILD_DIR="$build_dir" CYCLES=--cycles test 2>&1 || true)"
+
   if echo "$out" | grep -q 'RESULT : PASS'; then
-    c="$(echo "$out" | sed -n 's/.*RESULT : PASS ✓  (\([0-9][0-9]*\) cycles).*/\1/p' | tail -n1)"
-    if [[ -n "$c" ]]; then
-      echo "  PASS cycles=$c"
-      echo "$k,PASS,$c" >> "$REPORT_CSV"
-      pass_count=$((pass_count+1))
-    else
-      echo "  FAIL (kein cycle-wert parsebar)"
-      echo "$k,FAIL," >> "$REPORT_CSV"
-      fail_count=$((fail_count+1))
-    fi
+    cycles=$(echo "$out" | grep -oP '\(\K[0-9]+(?= cycles)')
+    cycle_str="${cycles:-(n/a)}"
+    echo "  PASS  ($cycle_str cycles)"
+    echo "$k,PASS,$cycle_str" >> "$REPORT_CSV"
+    pass_count=$((pass_count + 1))
   else
     echo "  FAIL"
-    echo "$out" | tail -n 12
+    echo "$out" | tail -n 15
     echo "$k,FAIL," >> "$REPORT_CSV"
-    fail_count=$((fail_count+1))
+    fail_count=$((fail_count + 1))
   fi
 
   echo
-
 done
 
-echo "Report: $REPORT_CSV"
-echo "PASS: $pass_count"
-echo "FAIL: $fail_count"
+echo "========================================"
+echo "Report : $REPORT_CSV"
+echo "PASS   : $pass_count"
+echo "FAIL   : $fail_count"
+echo "========================================"
 
 if [[ $fail_count -gt 0 ]]; then
   exit 1

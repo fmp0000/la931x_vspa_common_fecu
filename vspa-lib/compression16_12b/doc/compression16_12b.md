@@ -1,7 +1,7 @@
 ---
 kernel: compression16_12b
 precision: [half_fixed]
-status: not_started
+status: sim_verified
 
 inputs:
   - name: x
@@ -24,8 +24,8 @@ doc:            []
 depends_on: []
 
 perf:
-  cycles: null
-  au_config: null
+  cycles: 72925
+  au_config: vspa2_16au
   notes: ""
 ---
 

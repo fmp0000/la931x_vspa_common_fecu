@@ -10,6 +10,7 @@ AU        ?= 16
 KERNEL_DIR    = ..
 VSPA_SDK_INC  = ../../../vspa-sdk/inc
 BUILD_DIR    ?= ../build/tests
+REPO_ROOT     = ../../../../..
 
 VCFLAGS = \
     -arch vspa2 \
@@ -53,7 +54,7 @@ vectors/a.hex vectors/b.hex vectors/ref.hex:
 	$(MAKE) generate
 
 test: $(TARGET)
-	python3 ../../../../../scripts/run_test.py $(TARGET) vspa2_$(AU)au
+	python3 ../../tools/run_sim.py $(TARGET) vspa2_$(AU)au $(CYCLES)
 
 clean:
 	rm -f vectors/a.hex vectors/b.hex vectors/ref.hex $(TARGET)

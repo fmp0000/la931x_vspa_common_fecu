@@ -11,9 +11,12 @@ FRAMEWORK_DIR = $(REPO_ROOT)/framework
 BUILD_DIR    ?= ../build/tests
 
 VCFLAGS = \
-    -arch vspa2 -au_count $(AU) -core_type sp -ansi off -O3 -Os \
+    -arch vspa2 -au_count $(AU) -core_type sp -ansi off -g -O3 \
+    -cwd source \
+    -Os \
     -opt=noalias_by_type -mvcpu -msgstyle gcc -env "$(VSPA_TOOL)" \
-    -isystem $(VSPA_TOOL)/include -I$(KERNEL_DIR)/include -I../../common/include
+    -isystem $(VSPA_TOOL)/include -I$(KERNEL_DIR)/include -I../../common/include \
+    -Xlnk "-Map $(BUILD_DIR)/test_fir33_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_fir33_vspa2_$(AU)au.elf
 SRCS = test_fir33.c $(KERNEL_DIR)/src/firFilterReal.sx

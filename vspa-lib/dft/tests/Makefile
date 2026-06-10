@@ -18,7 +18,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -27,7 +28,8 @@ VCFLAGS = \
     -isystem $(VSPA_TOOL)/include \
     -I$(VSPA_SDK_INC) \
     -I$(KERNEL_DIR)/include \
-    -I../../common/include
+    -I../../common/include \
+    -Xlnk "-Map $(BUILD_DIR)/test_dft_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_dft_vspa2_$(AU)au.elf
 

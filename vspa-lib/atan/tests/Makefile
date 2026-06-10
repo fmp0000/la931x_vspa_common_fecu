@@ -28,7 +28,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -40,7 +41,8 @@ VCFLAGS = \
     -I$(KERNEL_DIR)/src \
     -I../../common/include \
     -I$(TC_VECTOR_DIR) \
-    -DTEST_ATAN2_NUM_COEFF=$(NUM_COEFF)
+    -DTEST_ATAN2_NUM_COEFF=$(NUM_COEFF) \
+    -Xlnk "-Map $(BUILD_DIR)/test_atan_$(TC)_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_atan_$(TC)_vspa2_$(AU)au.elf
 

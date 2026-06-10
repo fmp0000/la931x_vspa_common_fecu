@@ -18,7 +18,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -27,7 +28,8 @@ VCFLAGS = \
     -isystem $(VSPA_TOOL)/include \
     -I$(KERNEL_DIR)/inc \
     -I$(VSPA_SDK_INC) \
-    -I../../common/include
+    -I../../common/include \
+    -Xlnk "-Map $(BUILD_DIR)/test_phase_compensation_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_phase_compensation_vspa2_$(AU)au.elf
 SRCS = test_phase_compensation.c $(KERNEL_DIR)/src/phcom.sx

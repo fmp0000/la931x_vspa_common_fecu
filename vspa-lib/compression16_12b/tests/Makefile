@@ -17,7 +17,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -26,7 +27,8 @@ VCFLAGS = \
     -isystem $(VSPA_TOOL)/include \
     -I$(VSPA_SDK_INC) \
     -I$(KERNEL_DIR)/include \
-    -I$(KERNEL_DIR)/inc
+    -I$(KERNEL_DIR)/inc \
+    -Xlnk "-Map $(BUILD_DIR)/test_compression16_12b_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_compression16_12b_vspa2_$(AU)au.elf
 SRCS = test_compression16_12b.c $(KERNEL_DIR)/src/compression16_12b.sx

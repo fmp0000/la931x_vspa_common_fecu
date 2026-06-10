@@ -18,7 +18,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -28,7 +29,8 @@ VCFLAGS = \
     -I$(VSPA_SDK_INC) \
     -I$(KERNEL_DIR)/include \
     -I$(KERNEL_DIR)/inc \
-    -I../../common/include
+    -I../../common/include \
+    -Xlnk "-Map $(BUILD_DIR)/test_txiqcomp_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_txiqcomp_vspa2_$(AU)au.elf
 SRCS = test_txiqcomp.c $(KERNEL_DIR)/src/txiqcomp.sx

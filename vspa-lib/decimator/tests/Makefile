@@ -27,7 +27,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -38,7 +39,8 @@ VCFLAGS = \
     -I$(KERNEL_DIR)/include \
     -I$(KERNEL_DIR)/src \
     -I../../common/include \
-    -DTEST_DECIM_FLT_LEN=32
+    -DTEST_DECIM_FLT_LEN=32 \
+    -Xlnk "-Map $(BUILD_DIR)/test_decimator_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_decimator_vspa2_$(AU)au.elf
 

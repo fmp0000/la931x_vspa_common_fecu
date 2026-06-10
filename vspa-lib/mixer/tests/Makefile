@@ -18,7 +18,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -28,7 +29,8 @@ VCFLAGS = \
     -I$(KERNEL_DIR)/include \
     -I$(VSPA_SDK_INC) \
     -I../../common/include \
-    -D__VSPA_H__ -DUPHW=1 -DSIZEMAU=1
+    -D__VSPA_H__ -DUPHW=1 -DSIZEMAU=1 \
+    -Xlnk "-Map $(BUILD_DIR)/test_mixer_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_mixer_vspa2_$(AU)au.elf
 

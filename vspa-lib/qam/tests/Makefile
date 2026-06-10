@@ -19,7 +19,8 @@ VCFLAGS = \
     -au_count $(AU) \
     -core_type sp \
     -ansi off \
-    -O3 \
+    -g -O3 \
+    -cwd source \
     -Os \
     -opt=noalias_by_type \
     -mvcpu \
@@ -30,7 +31,8 @@ VCFLAGS = \
     -I$(KERNEL_DIR)/include \
     -I$(KERNEL_DIR)/inc \
     -I../../common/include \
-    -DQAM_MODE=QAM_MODE_$(QAM_MODE)
+    -DQAM_MODE=QAM_MODE_$(QAM_MODE) \
+    -Xlnk "-Map $(BUILD_DIR)/test_qam_$(QAM_MODE)_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_qam_$(QAM_MODE)_vspa2_$(AU)au.elf
 SRCS = test_qam.c $(KERNEL_DIR)/asm/qam.sx

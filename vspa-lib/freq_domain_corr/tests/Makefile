@@ -12,10 +12,13 @@ FRAMEWORK_DIR = $(REPO_ROOT)/framework
 BUILD_DIR    ?= ../build/tests
 
 VCFLAGS = \
-    -arch vspa2 -au_count $(AU) -core_type sp -ansi off -O3 -Os \
+    -arch vspa2 -au_count $(AU) -core_type sp -ansi off -g -O3 \
+    -cwd source \
+    -Os \
     -opt=noalias_by_type -mvcpu -msgstyle gcc -env "$(VSPA_TOOL)" \
     -isystem $(VSPA_TOOL)/include -I$(VSPA_SDK_INC) -I$(KERNEL_DIR)/include \
-    -I../../common/include
+    -I../../common/include \
+    -Xlnk "-Map $(BUILD_DIR)/test_freq_domain_corr_vspa2_$(AU)au.map"
 
 TARGET = $(BUILD_DIR)/test_freq_domain_corr_vspa2_$(AU)au.elf
 SRCS = test_freq_domain_corr.c $(KERNEL_DIR)/src/freq_domain_corr_asm.sx

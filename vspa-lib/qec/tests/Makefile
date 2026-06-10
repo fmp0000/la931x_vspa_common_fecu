@@ -32,7 +32,7 @@ VCFLAGS = \
     -DVSPA2 \
     -Xlnk "-Map $(BUILD_DIR)/test_qec_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_qec_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_qec_vspa2_$(AU)au.eld
 SRCS = test_qec.c $(KERNEL_DIR)/src/qec_opt.sx
 
 .PHONY: all generate test clean

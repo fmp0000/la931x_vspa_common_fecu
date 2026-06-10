@@ -20,7 +20,7 @@ VCFLAGS = \
     -I../../common/include $(EXTRA_CFLAGS) \
     -Xlnk "-Map $(BUILD_DIR)/test_fd_qec_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_fd_qec_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_fd_qec_vspa2_$(AU)au.eld
 SRCS = test_fd_qec.c $(KERNEL_DIR)/src/fd_qec.sx
 
 .PHONY: all generate test clean

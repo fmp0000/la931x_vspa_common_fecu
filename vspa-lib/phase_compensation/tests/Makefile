@@ -31,7 +31,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_phase_compensation_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_phase_compensation_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_phase_compensation_vspa2_$(AU)au.eld
 SRCS = test_phase_compensation.c $(KERNEL_DIR)/src/phcom.sx
 
 .PHONY: all generate test clean

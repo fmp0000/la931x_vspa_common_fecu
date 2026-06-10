@@ -32,7 +32,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_sigcond_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_sigcond_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_sigcond_vspa2_$(AU)au.eld
 SRCS = test_sigcond.c $(KERNEL_DIR)/src/customsigcond_ddc1x_N2560_4t.sx
 
 .PHONY: all generate test clean

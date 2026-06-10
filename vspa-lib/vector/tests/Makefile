@@ -31,7 +31,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_vector_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_vector_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_vector_vspa2_$(AU)au.eld
 SRCS = test_vector.c $(KERNEL_DIR)/source/vSclr_asm.sx
 
 .PHONY: all generate test clean

@@ -32,7 +32,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_txiqcomp_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_txiqcomp_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_txiqcomp_vspa2_$(AU)au.eld
 SRCS = test_txiqcomp.c $(KERNEL_DIR)/src/txiqcomp.sx
 
 .PHONY: all generate test clean

@@ -32,7 +32,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_nco_phase_ramp_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_nco_phase_ramp_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_nco_phase_ramp_vspa2_$(AU)au.eld
 SRCS = test_nco_phase_ramp.c $(KERNEL_DIR)/src/phase_ramp_gen.sx
 
 .PHONY: all generate test clean

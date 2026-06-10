@@ -31,7 +31,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_dft_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_dft_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_dft_vspa2_$(AU)au.eld
 
 SRCS = test_dft.c $(KERNEL_DIR)/src/mini_dft_hfx_hfl_asm.sx
 
@@ -60,4 +60,4 @@ test: $(TARGET)
 	python3 ../../tools/run_sim.py $(TARGET) vspa2_$(AU)au $(CYCLES)
 
 clean:
-	rm -f $(BUILD_DIR)/test_dft_*.elf
+	rm -f $(BUILD_DIR)/test_dft_*.eld

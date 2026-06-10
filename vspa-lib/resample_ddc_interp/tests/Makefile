@@ -32,8 +32,8 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_resample_ddc_interp_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_resample_ddc_interp_vspa2_$(AU)au.elf
-COMPUTE_TARGET = $(BUILD_DIR)/compute_decim_2x_8tap_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_resample_ddc_interp_vspa2_$(AU)au.eld
+COMPUTE_TARGET = $(BUILD_DIR)/compute_decim_2x_8tap_vspa2_$(AU)au.eld
 
 SRCS = test_resample_ddc_interp.c $(KERNEL_DIR)/src/ddc2x4x.sx
 COMPUTE_SRCS = compute_decim_2x_8tap.c $(KERNEL_DIR)/src/ddc2x4x.sx

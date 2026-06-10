@@ -18,7 +18,7 @@ VCFLAGS = \
     -isystem $(VSPA_TOOL)/include -I$(KERNEL_DIR)/include -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_fir64_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_fir64_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_fir64_vspa2_$(AU)au.eld
 SRCS = test_fir64.c $(KERNEL_DIR)/src/fir_filter.sx
 
 .PHONY: all generate test clean
@@ -45,4 +45,4 @@ test: $(TARGET)
 	python3 ../../tools/run_sim.py $(TARGET) vspa2_$(AU)au $(CYCLES)
 
 clean:
-	rm -f $(BUILD_DIR)/test_fir64_*.elf
+	rm -f $(BUILD_DIR)/test_fir64_*.eld

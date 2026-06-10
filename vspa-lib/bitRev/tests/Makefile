@@ -31,7 +31,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_bitRev_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_bitRev_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_bitRev_vspa2_$(AU)au.eld
 
 SRCS = test_bitRev.c \
        $(KERNEL_DIR)/src/bitRev64Invoke.c \
@@ -62,4 +62,4 @@ test: $(TARGET)
 	python3 ../../tools/run_sim.py $(TARGET) vspa2_$(AU)au $(CYCLES)
 
 clean:
-	rm -f $(BUILD_DIR)/test_bitRev_*.elf
+	rm -f $(BUILD_DIR)/test_bitRev_*.eld

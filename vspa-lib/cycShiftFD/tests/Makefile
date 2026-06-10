@@ -32,7 +32,7 @@ VCFLAGS = \
     -D__VSPA_H__ -DUPHW=1 -DSIZEMAU=1 \
     -Xlnk "-Map $(BUILD_DIR)/test_cycShiftFD_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_cycShiftFD_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_cycShiftFD_vspa2_$(AU)au.eld
 
 SRCS = test_cycShiftFD.c $(KERNEL_DIR)/src/cycShiftFD.sx
 

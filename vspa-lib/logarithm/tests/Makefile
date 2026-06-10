@@ -33,7 +33,7 @@ VCFLAGS = \
     -DLOG_FACT=$(LOG_FACT) \
     -Xlnk "-Map $(BUILD_DIR)/test_logarithm_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_logarithm_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_logarithm_vspa2_$(AU)au.eld
 
 SRCS = test_logarithm.c $(KERNEL_DIR)/src/log_asm.sx
 

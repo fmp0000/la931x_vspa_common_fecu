@@ -32,7 +32,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_matrix_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_matrix_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_matrix_vspa2_$(AU)au.eld
 
 SRCS = test_matrix.c \
     $(KERNEL_DIR)/src/matrix_bmult_c.c \

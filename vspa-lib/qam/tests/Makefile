@@ -34,7 +34,7 @@ VCFLAGS = \
     -DQAM_MODE=QAM_MODE_$(QAM_MODE) \
     -Xlnk "-Map $(BUILD_DIR)/test_qam_$(QAM_MODE)_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_qam_$(QAM_MODE)_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_qam_$(QAM_MODE)_vspa2_$(AU)au.eld
 SRCS = test_qam.c $(KERNEL_DIR)/asm/qam.sx
 
 .PHONY: all generate test clean

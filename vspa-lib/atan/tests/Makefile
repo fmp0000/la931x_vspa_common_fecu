@@ -44,7 +44,7 @@ VCFLAGS = \
     -DTEST_ATAN2_NUM_COEFF=$(NUM_COEFF) \
     -Xlnk "-Map $(BUILD_DIR)/test_atan_$(TC)_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_atan_$(TC)_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_atan_$(TC)_vspa2_$(AU)au.eld
 
 SRCS = test_atan.c \
        $(KERNEL_DIR)/src/atan_asm.sx \
@@ -78,4 +78,4 @@ test: $(TARGET)
 	python3 ../../tools/run_sim.py $(TARGET) vspa2_$(AU)au $(CYCLES)
 
 clean:
-	rm -f $(BUILD_DIR)/test_atan_*.elf
+	rm -f $(BUILD_DIR)/test_atan_*.eld

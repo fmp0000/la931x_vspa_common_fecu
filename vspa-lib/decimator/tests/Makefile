@@ -42,7 +42,7 @@ VCFLAGS = \
     -DTEST_DECIM_FLT_LEN=32 \
     -Xlnk "-Map $(BUILD_DIR)/test_decimator_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_decimator_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_decimator_vspa2_$(AU)au.eld
 
 SRCS = test_decimator.c \
     $(KERNEL_DIR)/src/decimator_asm.sx \

@@ -31,7 +31,7 @@ VCFLAGS = \
     -I$(KERNEL_DIR)/inc \
     -Xlnk "-Map $(BUILD_DIR)/test_utility_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_utility_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_utility_vspa2_$(AU)au.eld
 SRCS = test_utility.c $(KERNEL_DIR)/src/utilities.sx
 
 .PHONY: all generate test clean

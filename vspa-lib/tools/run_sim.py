@@ -6,7 +6,7 @@ Usage:
     python3 run_sim.py <elf_path> <au_config> [--cycles]
 
 Arguments:
-    elf_path   — path to .elf file (absolute or relative to CWD)
+    elf_path   — path to .eld file (absolute or relative to CWD)
     au_config  — device string, e.g. vspa2_16au, vspa2_32au
     --cycles   — pass -showpc to runsim and report cycle count (slow)
 
@@ -50,7 +50,7 @@ def _find_runsim() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a VSPA ELF and report PASS/FAIL.")
-    parser.add_argument("elf_path", help="Path to .elf file")
+    parser.add_argument("elf_path", help="Path to .eld file")
     parser.add_argument("au_config", help="Device string, e.g. vspa2_16au")
     parser.add_argument("--cycles", action="store_true",
                         help="Pass -showpc to runsim and report cycle count (slow)")

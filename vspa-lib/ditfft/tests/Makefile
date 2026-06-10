@@ -20,7 +20,7 @@ VCFLAGS = \
     -I../../common/include \
     -Xlnk "-Map $(BUILD_DIR)/test_ditfft_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_ditfft_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_ditfft_vspa2_$(AU)au.eld
 SRCS = test_ditfft.c $(KERNEL_DIR)/src/fftDIT512_hfl.sx
 
 .PHONY: all generate test clean
@@ -47,4 +47,4 @@ test: $(TARGET)
 	python3 ../../tools/run_sim.py $(TARGET) vspa2_$(AU)au $(CYCLES)
 
 clean:
-	rm -f $(BUILD_DIR)/test_ditfft_*.elf
+	rm -f $(BUILD_DIR)/test_ditfft_*.eld

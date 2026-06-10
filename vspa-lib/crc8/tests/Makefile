@@ -30,7 +30,7 @@ VCFLAGS = \
     -I$(KERNEL_DIR)/inc \
     -Xlnk "-Map $(BUILD_DIR)/test_crc8_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_crc8_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_crc8_vspa2_$(AU)au.eld
 SRCS = test_crc8.c $(KERNEL_DIR)/src/CRC8.c
 
 .PHONY: all generate test clean

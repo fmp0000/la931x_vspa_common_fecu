@@ -30,7 +30,7 @@ VCFLAGS = \
     -I$(KERNEL_DIR)/inc \
     -Xlnk "-Map $(BUILD_DIR)/test_compression16_12b_vspa2_$(AU)au.map"
 
-TARGET = $(BUILD_DIR)/test_compression16_12b_vspa2_$(AU)au.elf
+TARGET = $(BUILD_DIR)/test_compression16_12b_vspa2_$(AU)au.eld
 SRCS = test_compression16_12b.c $(KERNEL_DIR)/src/compression16_12b.sx
 
 .PHONY: all generate test clean
